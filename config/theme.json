@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "theme_pack_version": "2025.10.15",
+  "light": {
+    "bg": "#f2f2f2",
+    "panel": "#ffffff",
+    "text": "#333740",
+    "mutedText": "#5a5f6b",
+    "primary": "#1740b1",
+    "primaryDark": "#000070",
+    "accent": "#00adff",
+    "success": "#75e600",
+    "border": "#e5e7eb",
+    "shadow": "rgba(0,0,0,0.08)",
+    "gradient": [
+      "#000070",
+      "#1740b1"
+    ]
+  },
+    "dark": {
+        "bg": "#1e1e2e",          # deep neutral base
+        "panel": "#2b2b3c",       # slightly lighter for contrast
+        "text": "#dcdfe4",        # main text
+        "mutedText": "#a4acc4",   # secondary info
+        "primary": "#00bcd4",     # JCI teal accent
+        "primaryDark": "#008394",
+        "accent": "#9d7dff",      # purple highlight
+        "success": "#80e27e",     # green for valid parity
+        "border": "#3a3f55",      # soft divider
+        "shadow": "rgba(0,0,0,0.45)",
+        "gradient": ["#00bcd4", "#0064ff"]
+    }
+}

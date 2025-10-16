@@ -1,0 +1,10 @@
+# Python cache / build files
+__pycache__/
+dist/
+build/
+*.spec
+*.exe
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "format_pack_version": "2025.10.15",
+  "formats": [
+    {
+      "name": "H10301 - 26-bit",
+      "bit_length": 26,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility",
+          "start": 1,
+          "end": 8
+        },
+        {
+          "name": "Card",
+          "start": 9,
+          "end": 24
+        },
+        {
+          "name": "Parity R",
+          "start": 25,
+          "end": 25,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 12
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 13,
+              "end": 24
+            }
+          ]
+        }
+      ],
+      "csn": {
+        "enabled": false
+      }
+    },
+    {
+      "name": "H10306 - 34-bit",
+      "bit_length": 34,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility",
+          "start": 1,
+          "end": 16
+        },
+        {
+          "name": "Card",
+          "start": 17,
+          "end": 32
+        },
+        {
+          "name": "Parity R",
+          "start": 33,
+          "end": 33,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 16
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 17,
+              "end": 32
+            }
+          ]
+        }
+      ],
+      "csn": {
+        "enabled": false
+      }
+    },
+    {
+      "name": "H10302 - 37-bit",
+      "bit_length": 37,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility",
+          "start": 1,
+          "end": 16
+        },
+        {
+          "name": "Card",
+          "start": 17,
+          "end": 35
+        },
+        {
+          "name": "Parity R",
+          "start": 36,
+          "end": 36,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 18
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 19,
+              "end": 35
+            }
+          ]
+        }
+      ],
+      "csn": {
+        "enabled": false
+      }
+    },
+    {
+      "name": "P10001 - 40-bit (Honeywell)",
+      "bit_length": 40,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility",
+          "start": 1,
+          "end": 16
+        },
+        {
+          "name": "Card",
+          "start": 17,
+          "end": 38
+        },
+        {
+          "name": "Parity R",
+          "start": 39,
+          "end": 39,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 19
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 20,
+              "end": 38
+            }
+          ]
+        }
+      ],
+      "csn": {
+        "enabled": false
+      }
+    },
+    {
+      "name": "CSN - 32-bit (4-byte)",
+      "bit_length": 32,
+      "fields": [
+        {
+          "name": "CSN",
+          "start": 0,
+          "end": 31,
+          "view": [
+            "int",
+            "hex"
+          ]
+        }
+      ],
+      "parity": [],
+      "csn": {
+        "enabled": true,
+        "bit_order": "MSB",
+        "byte_order": "big",
+        "bcd": false
+      }
+    },
+    {
+      "name": "CSN - 56-bit (7-byte)",
+      "bit_length": 56,
+      "fields": [
+        {
+          "name": "CSN",
+          "start": 0,
+          "end": 55,
+          "view": [
+            "int",
+            "hex"
+          ]
+        }
+      ],
+      "parity": [],
+      "csn": {
+        "enabled": true,
+        "bit_order": "MSB",
+        "byte_order": "big",
+        "bcd": false
+      }
+    },
+    {
+      "name": "CSN - 64-bit (8-byte, TWIC/CAC friendly)",
+      "bit_length": 64,
+      "fields": [
+        {
+          "name": "CSN",
+          "start": 0,
+          "end": 63,
+          "view": [
+            "int",
+            "hex",
+            "bcd"
+          ]
+        }
+      ],
+      "parity": [],
+      "csn": {
+        "enabled": true,
+        "bit_order": "MSB",
+        "byte_order": "big",
+        "bcd": true
+      }
+    }
+  ]
+}
