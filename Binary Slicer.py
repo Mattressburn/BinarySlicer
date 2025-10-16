@@ -1006,9 +1006,31 @@ def main():
     try:
         ensure_bootstrap_configs()
         root = tk.Tk()
+
+        # --- Set window icon (works for script & PyInstaller) ---
+        try:
+            # Where to look for assets:
+            # - normal run: folder of this script
+            # - PyInstaller: temporary _MEIPASS
+            base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+
+            ico_path = os.path.join(base_dir, "icons", "jci_globe.ico")
+            if os.path.exists(ico_path):
+                root.iconbitmap(ico_path)   # best on Windows
+            else:
+                # PNG fallback (title bar/taskbar on some setups)
+                png_path = os.path.join(base_dir, "icons", "jci_globe_256.png")
+                if os.path.exists(png_path):
+                    icon = tk.PhotoImage(file=png_path)
+                    root.iconphoto(True, icon)
+        except Exception as e:
+            print(f"Could not set window icon: {e}")
+
         app = App(root)
         root.minsize(900, 560)
         root.mainloop()
+
+        
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
