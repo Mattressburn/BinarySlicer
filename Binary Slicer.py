@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-BinarySlicer – JCI Edition (fixed, ready-to-run)
-- Tkinter GUI for parsing HID/Wiegand-like binary/hex payloads
+BinarySlicer  JCI Edition 
+- Tkinter GUI for parsing Card Swipe binary/hex payloads
 - External formats.json (contiguous ranges + parity rules) with bootstrap defaults
 - Light/Dark theme toggle using ttk.Style (clam theme)
 - Manage Formats dialog (Add/Edit/Delete/Clone, Import/Export, Self-test)
@@ -39,7 +39,7 @@ DEFAULT_THEME = {
         "gradient": ["#000070", "#1740b1"]
     },
 
-    # 🔻 REPLACE THIS ENTIRE DARK BLOCK WITH THE FOLLOWING
+    
     "dark": {
         "bg": "#1e1e2e",          # deep neutral base
         "panel": "#2b2b3c",       # slightly lighter for contrast
@@ -56,6 +56,9 @@ DEFAULT_THEME = {
 }
 
 
+PARITY_L = "Parity L"
+PARITY_R = "Parity R"
+
 DEFAULT_FORMATS = {
     "schema_version": 1,
     "format_pack_version": "2025.10.15",
@@ -64,10 +67,10 @@ DEFAULT_FORMATS = {
             "name": "H10301 - 26-bit",
             "bit_length": 26,
             "fields": [
-                {"name":"Parity L", "start":0, "end":0, "role":"parity"},
+                {"name": PARITY_L, "start":0, "end":0, "role":"parity"},
                 {"name":"Facility", "start":1, "end":8},
                 {"name":"Card", "start":9, "end":24},
-                {"name":"Parity R", "start":25, "end":25, "role":"parity"}
+                {"name": PARITY_R, "start":25, "end":25, "role":"parity"}
             ],
             "parity": [
                 {"type":"even", "ranges":[{"start":1,"end":12}]},
@@ -79,10 +82,10 @@ DEFAULT_FORMATS = {
             "name": "H10306 - 34-bit",
             "bit_length": 34,
             "fields": [
-                {"name":"Parity L","start":0,"end":0,"role":"parity"},
+                {"name": PARITY_L,"start":0,"end":0,"role":"parity"},
                 {"name":"Facility","start":1,"end":16},
                 {"name":"Card","start":17,"end":32},
-                {"name":"Parity R","start":33,"end":33,"role":"parity"}
+                {"name": PARITY_R,"start":33,"end":33,"role":"parity"}
             ],
             "parity":[
                 {"type":"even","ranges":[{"start":1,"end":16}]},
@@ -94,10 +97,10 @@ DEFAULT_FORMATS = {
             "name": "H10302 - 37-bit",
             "bit_length": 37,
             "fields": [
-                {"name":"Parity L","start":0,"end":0,"role":"parity"},
+                {"name": PARITY_L,"start":0,"end":0,"role":"parity"},
                 {"name":"Facility","start":1,"end":16},
                 {"name":"Card","start":17,"end":35},
-                {"name":"Parity R","start":36,"end":36,"role":"parity"}
+                {"name": PARITY_R,"start":36,"end":36,"role":"parity"}
             ],
             "parity":[
                 {"type":"even","ranges":[{"start":1,"end":18}]},
@@ -109,10 +112,10 @@ DEFAULT_FORMATS = {
             "name": "P10001 - 40-bit (Honeywell)",
             "bit_length": 40,
             "fields": [
-                {"name":"Parity L","start":0,"end":0,"role":"parity"},
+                {"name": PARITY_L,"start":0,"end":0,"role":"parity"},
                 {"name":"Facility","start":1,"end":16},
                 {"name":"Card","start":17,"end":38},
-                {"name":"Parity R","start":39,"end":39,"role":"parity"}
+                {"name": PARITY_R,"start":39,"end":39,"role":"parity"}
             ],
             "parity":[
                 {"type":"even","ranges":[{"start":1,"end":19}]},
@@ -144,11 +147,24 @@ DEFAULT_FORMATS = {
     ]
 }
 
+# file-level constants for filenames to avoid repeating the literals
+FORMATS_FILENAME = "formats.json"
+THEME_FILENAME = "theme.json"
+
 # --------------------- Import helper modules with graceful fallbacks ---------------------
 try:
-    from modules.paths import config_path, appdata_dir
-    from modules.theme import load_theme
-    from modules.formats_io import load_formats, save_formats, merge_formats
+    # Use dynamic import to avoid static analysis issues when optional 'modules' package is absent.
+    import importlib
+    mod_paths = importlib.import_module("modules.paths")
+    mod_theme = importlib.import_module("modules.theme")
+    mod_formats = importlib.import_module("modules.formats_io")
+
+    config_path = getattr(mod_paths, "config_path")
+    appdata_dir = getattr(mod_paths, "appdata_dir")
+    load_theme = getattr(mod_theme, "load_theme")
+    load_formats = getattr(mod_formats, "load_formats")
+    save_formats = getattr(mod_formats, "save_formats")
+    merge_formats = getattr(mod_formats, "merge_formats")
 except Exception:
     # Fallbacks (portable first, then AppData) so app runs even if modules/ missing
     def _app_dir():
@@ -159,13 +175,13 @@ except Exception:
         portable = os.path.join(_app_dir(), "config", name)
         if os.path.exists(portable):
             return portable
-        return os.path.join(appdata_dir(), name)
     def load_theme(mode: str = "light"):
         try:
-            with open(config_path("theme.json"), "r", encoding="utf-8") as f:
+            with open(config_path(THEME_FILENAME), "r", encoding="utf-8") as f:
                 data = json.load(f)
             return data.get(mode, data.get("light", {}))
         except Exception:
+            return DEFAULT_THEME[mode] if mode in DEFAULT_THEME else DEFAULT_THEME["light"]
             return DEFAULT_THEME[mode] if mode in DEFAULT_THEME else DEFAULT_THEME["light"]
     def _read_json_safe(path, default):
         try:
@@ -173,26 +189,37 @@ except Exception:
                 return json.load(f)
         except Exception:
             return default
+
     def load_formats():
-        return _read_json_safe(config_path("formats.json"), DEFAULT_FORMATS)
+        return _read_json_safe(config_path(FORMATS_FILENAME), DEFAULT_FORMATS)
+
     def save_formats(doc: dict):
-        p = config_path("formats.json")
+        p = config_path(FORMATS_FILENAME)
         os.makedirs(os.path.dirname(p), exist_ok=True)
         try:
             if os.path.exists(p):
                 os.replace(p, p + ".bak")
         except Exception:
             pass
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(doc, f, indent=2)
+        try:
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(doc, f, indent=2)
+        except Exception:
+            # Fallback to current directory if writing to configured path fails
+            try:
+                with open(FORMATS_FILENAME, "w", encoding="utf-8") as f:
+                    json.dump(doc, f, indent=2)
+            except Exception:
+                pass
+
     def merge_formats(base: dict, incoming: dict):
-        names = {f.get("name"): i for i, f in enumerate(base.get("formats", []))}
-        for f in incoming.get("formats", []):
-            nm = f.get("name")
+        names = {fmt.get("name"): i for i, fmt in enumerate(base.get("formats", []))}
+        for fmt in incoming.get("formats", []):
+            nm = fmt.get("name")
             if nm in names:
-                base["formats"][names[nm]] = f
+                base["formats"][names[nm]] = fmt
             else:
-                base["formats"].append(f)
+                base["formats"].append(fmt)
         return base
 
 # --------------------- Utility ---------------------
@@ -265,32 +292,60 @@ def parity_odd_bit_needed(bits: str) -> int:
     ones = bits.count('1')
     return 1 if ones % 2 == 0 else 0
 
-def verify_parity(binary_string: str, fmt_obj: dict):
-    result = []
-    coverage = fmt_obj.get("parity_coverage")
-    if not coverage:
-        return result
+def _parse_parity_range(r):
+    if isinstance(r, dict) and "start" in r and "end" in r:
+        return int(r["start"]), int(r["end"])
+    if isinstance(r, (list, tuple)) and len(r) >= 2:
+        return int(r[0]), int(r[1])
+    return None
+
+def _normalize_parity_coverage(coverage):
+    # Support both legacy dict form {"even": ..., "odd": ...} and list-of-rules
     if isinstance(coverage, dict):
         rules = []
         for typ in ("even", "odd"):
-            if typ in coverage:
-                rules.append({"type": typ, "ranges": [coverage[typ]]})
-    else:
-        rules = coverage
-    for rule in rules:
-        typ = rule.get("type", "even").lower()
-        for (s,e) in rule.get("ranges", []):
-            data_bits = extract_bits(binary_string, s, e)
-            expected = parity_even_bit_needed(data_bits) if typ == "even" else parity_odd_bit_needed(data_bits)
-            result.append({
-                "label": "Even Parity" if typ=="even" else "Odd Parity",
-                "type": typ,
-                "coverage": (s,e),
-                "expected": expected,
-                "actual": None,   # could be wired to a named parity field if present
-                "ok": None,       # leave as None (diagnostic) unless mapped to a parity bit
-                "data_len": len(data_bits),
-            })
+            rngs = coverage.get(typ)
+            if not rngs:
+                continue
+            ranges = [rngs] if isinstance(rngs, dict) else list(rngs)
+            rules.append({"type": typ, "ranges": ranges})
+        return rules
+    if isinstance(coverage, list):
+        return coverage
+    return []
+
+def _build_parity_entry(binary_string: str, typ: str, start: int, end: int) -> dict:
+    data_bits = extract_bits(binary_string, start, end)
+    expected = parity_even_bit_needed(data_bits) if typ == "even" else parity_odd_bit_needed(data_bits)
+    return {
+        "label": "Even Parity" if typ == "even" else "Odd Parity",
+        "type": typ,
+        "coverage": (start, end),
+        "expected": expected,
+        "actual": None,   # reserved for mapping to explicit parity bits later
+        "ok": None,       # diagnostic until mapped to parity bit
+        "data_len": len(data_bits),
+    }
+
+def verify_parity(binary_string: str, fmt_obj: dict):
+    """
+    Normalize parity coverage into a flat list of (type, start, end) entries
+    then evaluate each entry in a concise, delegated manner.
+    """
+    coverage = fmt_obj.get("parity_coverage") or fmt_obj.get("parity")
+    if not coverage:
+        return []
+
+    normalized = _normalize_parity_coverage(coverage)
+    result = []
+    for rule in normalized:
+        typ = str(rule.get("type", "even")).lower()
+        for r in rule.get("ranges", []):
+            pr = _parse_parity_range(r)
+            if not pr:
+                continue
+            s, e = pr
+            result.append(_build_parity_entry(binary_string, typ, s, e))
     return result
 
 # --------------------- App ---------------------
@@ -420,7 +475,6 @@ class App:
         T = self.theme
         panel = T.get("panel", "#2b2b3c")
         accent = T.get("primary", "#00bcd4")
-        muted = T.get("mutedText", "#a4acc4")
         border = T.get("border", "#3a3f55")
 
         # base colors
@@ -557,7 +611,7 @@ class App:
         ttk.Label(right, text="Self-test (paste Hex or Binary)").pack(anchor=tk.W)
         test_entry = tk.Text(right, height=5)
         test_entry.pack(fill=tk.X)
-        ttk.Button(right, text="Run Test", command=lambda: self._self_test(tree, test_entry, right)).pack(anchor=tk.W, pady=6)
+        ttk.Button(right, text="Run Test", command=lambda: self._self_test(tree, test_entry)).pack(anchor=tk.W, pady=6)
 
         test_out = tk.Text(right, height=12)
         test_out.pack(fill=tk.BOTH, expand=True)
@@ -707,7 +761,23 @@ class App:
             self._parity_edit_dialog(tv, (item, vals))
     def _del_parity_row(self, tv):
         item = tv.focus()
-        if item: tv.delete(item)
+        if not item:
+            return
+        vals = tv.item(item, 'values')
+        # Ask for confirmation because parity rules affect decoding behavior
+        try:
+            typ = vals[0] if len(vals) > 0 else "parity"
+            start = vals[1] if len(vals) > 1 else "?"
+            end = vals[2] if len(vals) > 2 else "?"
+            if messagebox.askyesno("Delete Parity Rule", f"Delete parity rule '{typ}' for range {start}–{end}?"):
+                tv.delete(item)
+        except Exception:
+            # Fallback: delete without confirmation if something unexpected occurred
+            if messagebox.askyesno("Delete Parity Rule", "Delete selected parity rule?"):
+                try:
+                    tv.delete(item)
+                except Exception:
+                    pass
 
     def _parity_edit_dialog(self, tv, row):
         win = tk.Toplevel(self.root)
@@ -778,7 +848,7 @@ class App:
         self.status.configure(text=f"Formats loaded: {len(self.FORMATS)} (saved)")
         win.destroy()
 
-    def _self_test(self, tree, test_entry, right_parent):
+    def _self_test(self, tree, test_entry):
         content = test_entry.get("1.0", tk.END).strip()
         if not content:
             return
@@ -805,7 +875,12 @@ class App:
             out.append("")
             for r in pv:
                 s,e = r["coverage"]
-                stat = "OK" if r["ok"] else ("FAIL" if r["ok"] is False else "(no parity bit)")
+                if r["ok"]:
+                    stat = "OK"
+                elif r["ok"] is False:
+                    stat = "FAIL"
+                else:
+                    stat = "(no parity bit)"
                 out.append(f"Parity {r['type']:4}  {s:>3}–{e:<3}  expected={r['expected']} actual={r['actual']} {stat}")
         w = self._manage_widgets.get("test_out")
         if w:
@@ -831,29 +906,18 @@ class App:
             return
 
         self.last_rows_for_csv = []
-        rendered_any = False
         self.tree.delete(*self.tree.get_children(''))
         self.last_format_checks = []
 
+        rendered_any = False
         if exact:
             self.txt.insert(tk.END, "== Exact bit-length matches ==\n")
-            for name, fmt in exact:
-                if not self.show_fails.get() and not self._parity_all_ok(binary_string, fmt):
-                    continue
-                self._render_format(binary_string, name, fmt)
-                rendered_any = True
+            rendered_any |= self._render_candidates(binary_string, exact, slice_mode=None)
 
         if compatible:
             self.txt.insert(tk.END, "== Compatible (input longer than known format) ==\n")
             self.txt.insert(tk.END, "These may indicate framing/padding.\n\n")
-            for name, fmt in compatible:
-                L = fmt["bit_length"]
-                use_bits = binary_string[:L] if self.slice_mode.get()=="left" else binary_string[-L:]
-                if not self.show_fails.get() and not self._parity_all_ok(use_bits, fmt):
-                    continue
-                suffix = " (leftmost)" if self.slice_mode.get()=="left" else " (rightmost)"
-                self._render_format(use_bits, name+suffix, fmt)
-                rendered_any = True
+            rendered_any |= self._render_candidates(binary_string, compatible, slice_mode=self.slice_mode.get())
 
         if not rendered_any:
             self.txt.insert(tk.END,
@@ -861,6 +925,27 @@ class App:
                 "Tip: Enable 'Show parity failures (diagnostic)' to inspect candidates.\n")
 
         self._draw_parity_visualizer()
+
+    def _render_candidates(self, binary_string: str, candidates: list[tuple], slice_mode: str | None) -> bool:
+        """
+        Render a list of candidate formats; for compatible formats a slice_mode
+        determines whether to use the leftmost or rightmost bits.
+        Returns True if any candidate was rendered.
+        """
+        rendered = False
+        for name, fmt in candidates:
+            L = fmt["bit_length"]
+            if slice_mode is None:
+                use_bits = binary_string
+                display_name = name
+            else:
+                use_bits = binary_string[:L] if slice_mode == "left" else binary_string[-L:]
+                display_name = name + (" (leftmost)" if slice_mode == "left" else " (rightmost)")
+            if not self.show_fails.get() and not self._parity_all_ok(use_bits, fmt):
+                continue
+            self._render_format(use_bits, display_name, fmt)
+            rendered = True
+        return rendered
 
     def _render_format(self, binary_string: str, name: str, fmt: dict):
         self.txt.insert(tk.END, f"Format: {name}\n")
@@ -877,25 +962,17 @@ class App:
         pv = verify_parity(binary_string, fmt)
         if pv:
             for r in pv:
-                status = "OK" if r["ok"] else ("FAIL" if r["ok"] is False else "(no parity bit)")
+                if r["ok"]:
+                    status = "OK"
+                elif r["ok"] is False:
+                    status = "FAIL"
+                else:
+                    status = "(no parity bit)"
                 self.txt.insert(tk.END,
                     f"  Parity {r['type']:4} {r['coverage'][0]}–{r['coverage'][1]}: {status} "
                     f"(expected {r['expected']}, actual {r['actual']}; data_len={r['data_len']})\n")
             self.last_format_checks = pv
         self.txt.insert(tk.END, "\n")
-
-    def _detect_formats(self, binary_string: str):
-        exact = []
-        compatible = []
-        n = len(binary_string)
-        for name, fmt in self.FORMATS.items():
-            L = fmt["bit_length"]
-            if n == L:
-                exact.append((name, fmt))
-            elif n > L:
-                compatible.append((name, fmt))
-        return exact, compatible
-
     def _parity_all_ok(self, binary_string: str, fmt: dict) -> bool:
         pv = verify_parity(binary_string, fmt)
         if not pv:
@@ -943,7 +1020,7 @@ class App:
         if not self.last_rows_for_csv:
             messagebox.showwarning("No data", "Please calculate first.")
             return
-        default_name = f"hid_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        default_name = f"CardExport_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=default_name,
                                             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
         if not path:
@@ -971,15 +1048,22 @@ class App:
         return out
 
     def _normalize_one(self, f: dict) -> dict:
-        return self._normalize_formats({"formats":[f]} )[f.get("name")]
-
-# ---------------- Main ----------------
+        # Normalize a single format entry into the internal structure used by the app
+        bitlen = int(f.get("bit_length", 0))
+        fields = {fld["name"]: (int(fld["start"]), int(fld["end"])) for fld in f.get("fields", [])}
+        parity_cov = []
+        for p in f.get("parity", []):
+            typ = p.get("type", "even").lower()
+            ranges = [(int(r["start"]), int(r["end"])) for r in p.get("ranges", [])]
+            if ranges:
+                parity_cov.append({"type": typ, "ranges": ranges})
+        return {"bit_length": bitlen, "fields": fields, "parity_coverage": parity_cov}
 def ensure_bootstrap_configs():
     try:
         appdata = appdata_dir()
         os.makedirs(appdata, exist_ok=True)
-        tpath = config_path("theme.json")
-        fpath = config_path("formats.json")
+        tpath = config_path(THEME_FILENAME)
+        fpath = config_path(FORMATS_FILENAME)
         if not os.path.exists(tpath):
             with open(tpath, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_THEME, f, indent=2)
@@ -987,10 +1071,11 @@ def ensure_bootstrap_configs():
             with open(fpath, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_FORMATS, f, indent=2)
     except Exception:
+        # Fallback to current working directory if config_path/appdata not writable
         try:
-            with open("theme.json", "w", encoding="utf-8") as f:
+            with open(THEME_FILENAME, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_THEME, f, indent=2)
-            with open("formats.json", "w", encoding="utf-8") as f:
+            with open(FORMATS_FILENAME, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_FORMATS, f, indent=2)
         except Exception:
             pass
@@ -1026,7 +1111,7 @@ def main():
         except Exception as e:
             print(f"Could not set window icon: {e}")
 
-        app = App(root)
+        root.app = App(root)
         root.minsize(900, 560)
         root.mainloop()
 
