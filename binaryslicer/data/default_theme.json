@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "theme_pack_version": "2025.10.15",
+  "light": {
+    "bg": "#f2f2f2",
+    "panel": "#ffffff",
+    "text": "#333740",
+    "mutedText": "#5a5f6b",
+    "primary": "#1740b1",
+    "primaryDark": "#000070",
+    "accent": "#00adff",
+    "success": "#75e600",
+    "border": "#e5e7eb",
+    "shadow": "rgba(0,0,0,0.08)",
+    "gradient": [
+      "#000070",
+      "#1740b1"
+    ]
+  },
+  "dark": {
+    "bg": "#0a0f2a",
+    "panel": "#12183a",
+    "text": "#e8eefc",
+    "mutedText": "#c6d2f5",
+    "primary": "#00adff",
+    "primaryDark": "#1740b1",
+    "accent": "#2ee9ff",
+    "success": "#75e600",
+    "border": "#243057",
+    "shadow": "rgba(0,0,0,0.35)",
+    "gradient": [
+      "#000070",
+      "#1740b1"
+    ]
+  }
+}
