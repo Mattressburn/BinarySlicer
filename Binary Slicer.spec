@@ -5,7 +5,7 @@ a = Analysis(
     ['Binary Slicer.py'],
     pathex=[],
     binaries=[],
-    datas=[('icons', 'icons')],
+    datas=[('icons', 'icons'), ('binaryslicer/data', 'binaryslicer/data'), ('config', 'config')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

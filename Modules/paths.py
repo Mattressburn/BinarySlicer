@@ -1,7 +1,9 @@
-import os, sys
-def app_dir(): return os.path.dirname(os.path.abspath(sys.argv[0]))
-def appdata_dir(): return os.path.join(os.getenv("APPDATA"), "BinarySlicer")
-def config_path(name):
-    p = os.path.join(app_dir(), "config", name)
-    if os.path.exists(p): return p
-    return os.path.join(appdata_dir(), name)
+"""Compatibility shim for legacy imports."""
+
+from binaryslicer.paths import (
+    application_dir as app_dir,
+    user_config_dir as appdata_dir,
+    resolve_config_path as config_path,
+)
+
+__all__ = ["app_dir", "appdata_dir", "config_path"]
