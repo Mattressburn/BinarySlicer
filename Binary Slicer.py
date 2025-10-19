@@ -25,6 +25,7 @@ from tkinter import ttk, filedialog, messagebox
 DEFAULT_THEME = {
     "schema_version": 1,
     "theme_pack_version": "2025.10.15",
+    "active_mode": "light",
     "light": {
         "bg": "#f2f2f2",
         "panel": "#ffffff",
@@ -162,6 +163,8 @@ try:
     config_path = getattr(mod_paths, "config_path")
     appdata_dir = getattr(mod_paths, "appdata_dir")
     load_theme = getattr(mod_theme, "load_theme")
+    load_theme_mode = getattr(mod_theme, "load_theme_mode", lambda default="light": default)
+    save_theme_mode = getattr(mod_theme, "save_theme_mode", lambda mode: None)
     load_formats = getattr(mod_formats, "load_formats")
     save_formats = getattr(mod_formats, "save_formats")
     merge_formats = getattr(mod_formats, "merge_formats")
@@ -170,19 +173,67 @@ except Exception:
     def _app_dir():
         return os.path.dirname(os.path.abspath(sys.argv[0]))
     def appdata_dir():
-        return os.path.join(os.getenv("APPDATA", _app_dir()), "BinarySlicer")
+        env_root = os.getenv("APPDATA")
+        if env_root:
+            candidate = os.path.join(env_root, "BinarySlicer")
+        else:
+            candidate = os.path.join(os.path.expanduser("~"), ".binaryslicer")
+        try:
+            os.makedirs(candidate, exist_ok=True)
+        except Exception:
+            candidate = os.path.join(_app_dir(), "config")
+            os.makedirs(candidate, exist_ok=True)
+        return candidate
+
     def config_path(name: str) -> str:
-        portable = os.path.join(_app_dir(), "config", name)
+        portable_dir = os.path.join(_app_dir(), "config")
+        portable = os.path.join(portable_dir, name)
         if os.path.exists(portable):
             return portable
-    def load_theme(mode: str = "light"):
+        return os.path.join(appdata_dir(), name)
+
+    def _read_theme_doc():
         try:
             with open(config_path(THEME_FILENAME), "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data.get(mode, data.get("light", {}))
+                return json.load(f)
         except Exception:
-            return DEFAULT_THEME[mode] if mode in DEFAULT_THEME else DEFAULT_THEME["light"]
-            return DEFAULT_THEME[mode] if mode in DEFAULT_THEME else DEFAULT_THEME["light"]
+            return {}
+
+    def _write_theme_doc(doc):
+        path = config_path(THEME_FILENAME)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(doc, f, indent=2)
+        except Exception:
+            pass
+
+    def load_theme_mode(default: str = "light") -> str:
+        data = _read_theme_doc()
+        mode = data.get("active_mode", default)
+        if isinstance(data.get(mode), dict):
+            return mode
+        if isinstance(data.get("light"), dict):
+            return "light"
+        return default
+
+    def save_theme_mode(mode: str) -> None:
+        data = _read_theme_doc()
+        if not isinstance(data, dict) or not data:
+            data = json.loads(json.dumps(DEFAULT_THEME))
+        data["active_mode"] = mode
+        _write_theme_doc(data)
+
+    def load_theme(mode: str | None = None):
+        data = _read_theme_doc()
+        if mode is None:
+            mode = data.get("active_mode", "light")
+        theme = data.get(mode)
+        if isinstance(theme, dict):
+            return theme
+        fallback = data.get("light")
+        if isinstance(fallback, dict):
+            return fallback
+        return DEFAULT_THEME.get(mode, DEFAULT_THEME.get("light", {}))
     def _read_json_safe(path, default):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -355,7 +406,7 @@ class App:
         self.root.title("BinarySlicer – JCI Edition")
 
         # Theme
-        self.theme_mode = "light"
+        self.theme_mode = load_theme_mode("light")
         self.theme = load_theme(self.theme_mode)
         self._init_styles()
         self._apply_theme()
@@ -429,7 +480,10 @@ class App:
         self.tab_visual.columnconfigure(0, weight=1)
 
         # Status
-        self.status = ttk.Label(container, text=f"Formats loaded: {len(self.FORMATS)} | AppData: {appdata_dir()}")
+        status_text = f"Formats loaded: {len(self.FORMATS)} | AppData: {appdata_dir()}"
+        self._status_message = status_text
+        self._status_after_id = None
+        self.status = ttk.Label(container, text=status_text)
         self.status.grid(row=2, column=0, columnspan=10, sticky=(tk.W, tk.E), pady=(8,0))
 
         # Menu
@@ -536,11 +590,30 @@ class App:
             except tk.TclError:
                 pass
 
+    def _set_status(self, message: str, temporary: bool = False, duration: int = 3500):
+        if self._status_after_id:
+            try:
+                self.status.after_cancel(self._status_after_id)
+            except Exception:
+                pass
+            self._status_after_id = None
+        if temporary:
+            self.status.configure(text=message)
+            try:
+                self._status_after_id = self.status.after(duration, lambda: self.status.configure(text=self._status_message))
+            except Exception:
+                # If scheduling fails, fall back to persisting the message
+                self._status_message = message
+        else:
+            self._status_message = message
+            self.status.configure(text=message)
+
     def toggle_theme(self):
         self.theme_mode = "dark" if self.theme_mode == "light" else "light"
         self.theme = load_theme(self.theme_mode)
         self._apply_theme()
         self._apply_theme_classic_widgets()
+        save_theme_mode(self.theme_mode)
 
     # ---------------- Menu / Manage Formats ----------------
     def _build_menu(self):
@@ -564,7 +637,7 @@ class App:
             save_formats(self.formats_doc)
             self.FORMATS = self._normalize_formats(self.formats_doc)
             messagebox.showinfo("Imported", f"Merged formats from {os.path.basename(path)}")
-            self.status.configure(text=f"Formats loaded: {len(self.FORMATS)} (merged)")
+            self._set_status(f"Formats loaded: {len(self.FORMATS)} (merged)")
         except Exception as e:
             messagebox.showerror("Import failed", str(e))
 
@@ -584,6 +657,9 @@ class App:
     def manage_formats_dialog(self):
         dlg = tk.Toplevel(self.root)
         dlg.title("Manage Formats")
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.focus_set()
         dlg.geometry("900x520")
         frm = ttk.Frame(dlg, padding=10)
         frm.pack(fill=tk.BOTH, expand=True)
@@ -624,6 +700,8 @@ class App:
         # retain refs
         self._manage_widgets = {"tree": tree, "test_out": test_out}
 
+        self.root.wait_window(dlg)
+
     def _edit_selected_format(self, dlg, tree):
         item = tree.focus()
         if not item:
@@ -643,7 +721,7 @@ class App:
             save_formats(self.formats_doc)
             self.FORMATS = self._normalize_formats(self.formats_doc)
             tree.delete(item)
-            self.status.configure(text=f"Formats loaded: {len(self.FORMATS)} (deleted '{name}')")
+            self._set_status(f"Formats loaded: {len(self.FORMATS)} (deleted '{name}')")
 
     def _clone_selected_format(self, tree):
         item = tree.focus()
@@ -659,11 +737,14 @@ class App:
         save_formats(self.formats_doc)
         self.FORMATS = self._normalize_formats(self.formats_doc)
         tree.insert('', tk.END, values=(dup.get("name"), dup.get("bit_length")))
-        self.status.configure(text=f"Formats loaded: {len(self.FORMATS)} (cloned)")
+        self._set_status(f"Formats loaded: {len(self.FORMATS)} (cloned)")
 
     def _edit_format(self, parent, fmt, tree):
         win = tk.Toplevel(parent)
         win.title("Edit Format" if fmt else "Add Format")
+        win.transient(parent)
+        win.grab_set()
+        win.focus_set()
         body = ttk.Frame(win, padding=10)
         body.pack(fill=tk.BOTH, expand=True)
 
@@ -682,8 +763,8 @@ class App:
             fields_tree.heading(c, text=c)
             fields_tree.column(c, anchor=tk.W, width=120)
         fields_tree.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E))
-        ttk.Button(fields_frame, text="Add Field", command=lambda: self._add_field_row(fields_tree)).grid(row=1, column=0, pady=4)
-        ttk.Button(fields_frame, text="Edit Field", command=lambda: self._edit_field_row(fields_tree)).grid(row=1, column=1, pady=4)
+        ttk.Button(fields_frame, text="Add Field", command=lambda: self._add_field_row(win, fields_tree)).grid(row=1, column=0, pady=4)
+        ttk.Button(fields_frame, text="Edit Field", command=lambda: self._edit_field_row(win, fields_tree)).grid(row=1, column=1, pady=4)
         ttk.Button(fields_frame, text="Delete Field", command=lambda: self._del_field_row(fields_tree)).grid(row=1, column=2, pady=4)
 
         parity_frame = ttk.Labelframe(body, text="Parity rules")
@@ -693,8 +774,8 @@ class App:
             parity_tree.heading(c, text=c)
             parity_tree.column(c, anchor=tk.W, width=120)
         parity_tree.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E))
-        ttk.Button(parity_frame, text="Add Rule", command=lambda: self._add_parity_row(parity_tree)).grid(row=1, column=0, pady=4)
-        ttk.Button(parity_frame, text="Edit Rule", command=lambda: self._edit_parity_row(parity_tree)).grid(row=1, column=1, pady=4)
+        ttk.Button(parity_frame, text="Add Rule", command=lambda: self._add_parity_row(win, parity_tree)).grid(row=1, column=0, pady=4)
+        ttk.Button(parity_frame, text="Edit Rule", command=lambda: self._edit_parity_row(win, parity_tree)).grid(row=1, column=1, pady=4)
         ttk.Button(parity_frame, text="Delete Rule", command=lambda: self._del_parity_row(parity_tree)).grid(row=1, column=2, pady=4)
 
         if fmt:
@@ -710,20 +791,23 @@ class App:
         ttk.Button(actions, text="Save", command=lambda: self._save_format(win, fmt, name_var, bitlen_var, fields_tree, parity_tree, tree)).pack(side=tk.RIGHT)
         ttk.Button(actions, text="Cancel", command=win.destroy).pack(side=tk.RIGHT, padx=8)
 
-    def _add_field_row(self, tv):
-        self._field_edit_dialog(tv, None)
-    def _edit_field_row(self, tv):
+    def _add_field_row(self, parent, tv):
+        self._field_edit_dialog(parent, tv, None)
+    def _edit_field_row(self, parent, tv):
         item = tv.focus()
         if item:
             vals = tv.item(item, 'values')
-            self._field_edit_dialog(tv, (item, vals))
+            self._field_edit_dialog(parent, tv, (item, vals))
     def _del_field_row(self, tv):
         item = tv.focus()
         if item: tv.delete(item)
 
-    def _field_edit_dialog(self, tv, row):
-        win = tk.Toplevel(self.root)
+    def _field_edit_dialog(self, parent, tv, row):
+        win = tk.Toplevel(parent)
         win.title("Field")
+        win.transient(parent)
+        win.grab_set()
+        win.focus_set()
         frm = ttk.Frame(win, padding=10)
         frm.pack(fill=tk.BOTH, expand=True)
         ttk.Label(frm, text="Name").grid(row=0, column=0, sticky=tk.W)
@@ -752,13 +836,13 @@ class App:
             win.destroy()
         ttk.Button(frm, text="Save", command=save_row).grid(row=3, column=1, sticky=tk.E, pady=6)
 
-    def _add_parity_row(self, tv):
-        self._parity_edit_dialog(tv, None)
-    def _edit_parity_row(self, tv):
+    def _add_parity_row(self, parent, tv):
+        self._parity_edit_dialog(parent, tv, None)
+    def _edit_parity_row(self, parent, tv):
         item = tv.focus()
         if item:
             vals = tv.item(item, 'values')
-            self._parity_edit_dialog(tv, (item, vals))
+            self._parity_edit_dialog(parent, tv, (item, vals))
     def _del_parity_row(self, tv):
         item = tv.focus()
         if not item:
@@ -779,9 +863,12 @@ class App:
                 except Exception:
                     pass
 
-    def _parity_edit_dialog(self, tv, row):
-        win = tk.Toplevel(self.root)
+    def _parity_edit_dialog(self, parent, tv, row):
+        win = tk.Toplevel(parent)
         win.title("Parity Rule")
+        win.transient(parent)
+        win.grab_set()
+        win.focus_set()
         frm = ttk.Frame(win, padding=10)
         frm.pack(fill=tk.BOTH, expand=True)
         ttk.Label(frm, text="Type").grid(row=0, column=0, sticky=tk.W)
@@ -845,7 +932,7 @@ class App:
         list_tree.delete(*list_tree.get_children(''))
         for f in self.formats_doc.get("formats", []):
             list_tree.insert('', tk.END, values=(f.get("name","?"), f.get("bit_length","?")))
-        self.status.configure(text=f"Formats loaded: {len(self.FORMATS)} (saved)")
+        self._set_status(f"Formats loaded: {len(self.FORMATS)} (saved)")
         win.destroy()
 
     def _self_test(self, tree, test_entry):
@@ -1004,7 +1091,7 @@ class App:
         text = self.txt.get("1.0", tk.END)
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
-        messagebox.showinfo("Copied", "Results copied to clipboard.")
+        self._set_status("Results copied to clipboard.", temporary=True)
 
     def copy_selected_table(self):
         sel = self.tree.focus()
@@ -1014,7 +1101,7 @@ class App:
         copy_text = "\t".join(str(v) for v in vals)
         self.root.clipboard_clear()
         self.root.clipboard_append(copy_text)
-        messagebox.showinfo("Copied", "Selected row copied.")
+        self._set_status("Selected row copied to clipboard.", temporary=True)
 
     def export_csv(self):
         if not self.last_rows_for_csv:
@@ -1032,32 +1119,43 @@ class App:
         messagebox.showinfo("Exported", f"Saved to {path}")
 
     # ---------------- Normalization ----------------
+    def _normalize_format_payload(self, fmt_json: dict) -> dict:
+        bitlen = int(fmt_json.get("bit_length", 0))
+        fields = {}
+        for fld in fmt_json.get("fields", []):
+            name = fld.get("name")
+            if not name:
+                continue
+            try:
+                start = int(fld.get("start"))
+                end = int(fld.get("end"))
+            except Exception:
+                continue
+            fields[name] = (start, end)
+        parity_cov = []
+        for p in fmt_json.get("parity", []):
+            typ = str(p.get("type", "even")).lower()
+            ranges = []
+            for r in p.get("ranges", []):
+                try:
+                    rng = (int(r.get("start")), int(r.get("end")))
+                except Exception:
+                    continue
+                ranges.append(rng)
+            if ranges:
+                parity_cov.append({"type": typ, "ranges": ranges})
+        return {"bit_length": bitlen, "fields": fields, "parity_coverage": parity_cov}
+
     def _normalize_formats(self, doc: dict) -> dict:
         out = {}
         for f in doc.get("formats", []):
-            name = f.get("name","Format")
-            bitlen = int(f.get("bit_length", 0))
-            fields = {fld["name"]: (int(fld["start"]), int(fld["end"])) for fld in f.get("fields", [])}
-            parity_cov = []
-            for p in f.get("parity", []):
-                typ = p.get("type","even").lower()
-                ranges = [(int(r["start"]), int(r["end"])) for r in p.get("ranges", [])]
-                if ranges:
-                    parity_cov.append({"type": typ, "ranges": ranges})
-            out[name] = {"bit_length": bitlen, "fields": fields, "parity_coverage": parity_cov}
+            name = f.get("name", "Format")
+            out[name] = self._normalize_format_payload(f)
         return out
 
     def _normalize_one(self, f: dict) -> dict:
         # Normalize a single format entry into the internal structure used by the app
-        bitlen = int(f.get("bit_length", 0))
-        fields = {fld["name"]: (int(fld["start"]), int(fld["end"])) for fld in f.get("fields", [])}
-        parity_cov = []
-        for p in f.get("parity", []):
-            typ = p.get("type", "even").lower()
-            ranges = [(int(r["start"]), int(r["end"])) for r in p.get("ranges", [])]
-            if ranges:
-                parity_cov.append({"type": typ, "ranges": ranges})
-        return {"bit_length": bitlen, "fields": fields, "parity_coverage": parity_cov}
+        return self._normalize_format_payload(f)
 def ensure_bootstrap_configs():
     try:
         appdata = appdata_dir()
@@ -1067,6 +1165,21 @@ def ensure_bootstrap_configs():
         if not os.path.exists(tpath):
             with open(tpath, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_THEME, f, indent=2)
+        else:
+            needs_update = False
+            try:
+                with open(tpath, "r", encoding="utf-8") as f:
+                    theme_doc = json.load(f)
+            except Exception:
+                theme_doc = DEFAULT_THEME
+                needs_update = True
+            else:
+                if "active_mode" not in theme_doc:
+                    theme_doc["active_mode"] = DEFAULT_THEME.get("active_mode", "light")
+                    needs_update = True
+            if needs_update:
+                with open(tpath, "w", encoding="utf-8") as f:
+                    json.dump(theme_doc, f, indent=2)
         if not os.path.exists(fpath):
             with open(fpath, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_FORMATS, f, indent=2)

@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "theme_pack_version": "2025.10.15",
+  "active_mode": "light",
   "light": {
     "bg": "#f2f2f2",
     "panel": "#ffffff",
