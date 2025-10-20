@@ -58,16 +58,28 @@ def bundled_resource_path(name: str) -> Path:
 
 
 @lru_cache(maxsize=None)
+def _resolve_config_path_cached(name: str) -> Path:
+    """Memoized helper for locating a configuration file."""
+    portable = bundled_resource_path(name)
+    if portable.exists():
+        return portable
+    ensure_user_config_dir()
+    return user_config_dir() / name
+
+
 def resolve_config_path(name: str) -> Path:
     """Locate a configuration file, preferring user data when available."""
     user_path = user_config_dir() / name
     if user_path.exists():
         return user_path
-    portable = bundled_resource_path(name)
-    if portable.exists():
-        return portable
-    ensure_user_config_dir()
-    return user_path
+    path = _resolve_config_path_cached(name)
+    if path != user_path and user_path.exists():
+        _resolve_config_path_cached.cache_clear()
+        return resolve_config_path(name)
+    return path
+
+
+resolve_config_path.cache_clear = _resolve_config_path_cached.cache_clear
 
 
 def writable_config_path(name: str) -> Path:
