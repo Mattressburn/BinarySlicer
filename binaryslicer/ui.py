@@ -11,7 +11,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from .decoder import format_binary_groups, process_input
+from .decoder import clean_input, format_binary_groups, is_binary, is_hex, process_input
 from .formats import (
     FormatRepository,
     NormalizedFormat,
@@ -45,45 +45,223 @@ class App:
         self.formats_doc = self.format_repo.document
         self.formats = self.format_repo.formats
 
-        # Layout
-        container = ttk.Frame(root, padding=10)
-        container.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        # Derived format metadata
+        self.format_bit_lengths: list[int] = []
+        self.format_length_lookup: dict[int, list[str]] = {}
+        self._refresh_format_lengths()
+
+        # Hero header
+        self.hero = tk.Frame(root, borderwidth=0)
+        self.hero.grid(row=0, column=0, sticky=(tk.E, tk.W))
+        self.hero.columnconfigure(0, weight=1)
+
+        self.hero_content = tk.Frame(self.hero, borderwidth=0)
+        self.hero_content.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=20, pady=(16, 12))
+        self.hero_content.columnconfigure(0, weight=1)
+
+        self.hero_badge = tk.Label(
+            self.hero_content,
+            text="JCI Tools",
+            font=("Segoe UI", 10, "bold"),
+            padx=12,
+            pady=4,
+        )
+        self.hero_badge.grid(row=0, column=0, sticky=tk.W)
+
+        self.hero_title = tk.Label(
+            self.hero_content,
+            text="BinarySlicer",
+            font=("Segoe UI", 20, "bold"),
+            pady=2,
+        )
+        self.hero_title.grid(row=1, column=0, sticky=tk.W)
+
+        self.hero_subtitle = tk.Label(
+            self.hero_content,
+            text="Decode access control payloads with brand-aligned clarity.",
+            font=("Segoe UI", 11),
+            pady=2,
+        )
+        self.hero_subtitle.grid(row=2, column=0, sticky=tk.W)
+
+        self.hero_accent = tk.Frame(self.hero, height=3, borderwidth=0)
+        self.hero_accent.grid(row=1, column=0, sticky=(tk.E, tk.W))
+
+        # Main container
+        container = ttk.Frame(root, padding=(18, 16), style="AppContainer.TFrame")
+        container.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         root.columnconfigure(0, weight=1)
-        root.rowconfigure(0, weight=1)
+        root.rowconfigure(1, weight=1)
 
-        ttk.Label(container, text="Enter Hex or Binary:").grid(row=0, column=0, sticky=tk.W)
-        self.input_entry = ttk.Entry(container, width=64)
-        self.input_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
-        container.columnconfigure(1, weight=1)
+        # Input card
+        input_card = ttk.Frame(container, padding=(16, 14), style="Card.TFrame")
+        input_card.grid(row=0, column=0, columnspan=10, sticky=(tk.E, tk.W))
+        input_card.columnconfigure(0, weight=1)
 
-        self.btn_calc = ttk.Button(container, text="Calculate", command=self.on_calculate)
-        self.btn_calc.grid(row=0, column=2, padx=6)
-        self.btn_copy = ttk.Button(container, text="Copy Results", command=self.copy_results)
-        self.btn_copy.grid(row=0, column=3, padx=6)
-        self.btn_export = ttk.Button(container, text="Export CSV", command=self.export_csv)
-        self.btn_export.grid(row=0, column=4, padx=6)
+        ttk.Label(input_card, text="Payload Analyzer", style="SectionHeading.TLabel").grid(
+            row=0, column=0, sticky=tk.W
+        )
+        ttk.Label(
+            input_card,
+            text="Paste binary or hexadecimal payloads; BinarySlicer automatically normalizes spacing, prefixes, and case.",
+            style="Subtle.TLabel",
+            wraplength=620,
+        ).grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=(2, 10))
+
+        entry_row = ttk.Frame(input_card, style="CardInner.TFrame")
+        entry_row.grid(row=2, column=0, columnspan=4, sticky=(tk.E, tk.W))
+        entry_row.columnconfigure(1, weight=1)
+
+        ttk.Label(entry_row, text="Payload", style="FieldLabel.TLabel").grid(row=0, column=0, sticky=tk.W)
+        self.input_var = tk.StringVar()
+        self.input_entry = ttk.Entry(entry_row, textvariable=self.input_var, width=68)
+        self.input_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(12, 12))
+
+        quick_frame = ttk.Frame(entry_row, style="CardInner.TFrame")
+        quick_frame.grid(row=0, column=2, sticky=tk.W)
+
+        self.btn_paste = ttk.Button(
+            quick_frame,
+            text="Paste",
+            style="Ghost.TButton",
+            command=self.paste_from_clipboard,
+            width=10,
+        )
+        self.btn_paste.grid(row=0, column=0, padx=(0, 6))
+
+        self.btn_clear = ttk.Button(
+            quick_frame,
+            text="Clear",
+            style="Ghost.TButton",
+            command=self.clear_input,
+            width=10,
+        )
+        self.btn_clear.grid(row=0, column=1)
+
+        feedback_row = ttk.Frame(input_card, style="CardInner.TFrame")
+        feedback_row.grid(row=3, column=0, columnspan=4, sticky=(tk.E, tk.W), pady=(12, 4))
+        feedback_row.columnconfigure(0, weight=1)
+
+        self.input_feedback = ttk.Label(
+            feedback_row,
+            text="Waiting for input…",
+            style="Info.TLabel",
+            wraplength=620,
+        )
+        self.input_feedback.grid(row=0, column=0, sticky=tk.W)
+
+        progress_row = ttk.Frame(input_card, style="CardInner.TFrame")
+        progress_row.grid(row=4, column=0, columnspan=4, sticky=(tk.E, tk.W), pady=(4, 12))
+        progress_row.columnconfigure(0, weight=1)
+
+        self.bit_progress = ttk.Progressbar(
+            progress_row,
+            orient=tk.HORIZONTAL,
+            length=200,
+            mode="determinate",
+            maximum=100,
+            style="Hero.Horizontal.TProgressbar",
+        )
+        self.bit_progress.grid(row=0, column=0, sticky=(tk.E, tk.W))
+
+        self.bit_progress_label = ttk.Label(progress_row, text="", style="Subtle.TLabel")
+        self.bit_progress_label.grid(row=1, column=0, sticky=tk.W, pady=(4, 0))
+
+        action_row = ttk.Frame(input_card, style="CardInner.TFrame")
+        action_row.grid(row=5, column=0, columnspan=4, sticky=(tk.E, tk.W))
+        action_row.columnconfigure(0, weight=1)
+
+        self.btn_calc = ttk.Button(
+            action_row,
+            text="Analyze Payload",
+            style="Primary.TButton",
+            command=self.on_calculate,
+        )
+        self.btn_calc.grid(row=0, column=0, sticky=tk.W)
+
+        secondary_actions = ttk.Frame(action_row, style="CardInner.TFrame")
+        secondary_actions.grid(row=0, column=1, sticky=tk.E)
+
+        self.btn_copy = ttk.Button(
+            secondary_actions,
+            text="Copy Results",
+            style="Accent.TButton",
+            command=self.copy_results,
+        )
+        self.btn_copy.grid(row=0, column=0, padx=(0, 8))
+
+        self.btn_export = ttk.Button(
+            secondary_actions,
+            text="Export CSV",
+            style="Ghost.TButton",
+            command=self.export_csv,
+        )
+        self.btn_export.grid(row=0, column=1)
+
+        # Options card
+        options_card = ttk.Frame(container, padding=(16, 12), style="Card.TFrame")
+        options_card.grid(row=1, column=0, columnspan=10, sticky=(tk.E, tk.W), pady=(16, 0))
+        for col in range(4):
+            options_card.columnconfigure(col, weight=1)
 
         self.show_fails = tk.BooleanVar(value=False)
-        ttk.Checkbutton(container, text="Show parity failures (diagnostic)", variable=self.show_fails).grid(
-            row=0, column=5, padx=6
-        )
+        ttk.Checkbutton(
+            options_card,
+            text="Show parity failures (diagnostic)",
+            variable=self.show_fails,
+            style="Toggle.TCheckbutton",
+        ).grid(row=0, column=0, sticky=tk.W)
 
-        ttk.Label(container, text="Compatible slicing:").grid(row=0, column=6, padx=(12, 2))
+        slice_frame = ttk.Frame(options_card, style="CardInner.TFrame")
+        slice_frame.grid(row=0, column=1, sticky=tk.W)
+        ttk.Label(slice_frame, text="Compatible slicing", style="FieldLabel.TLabel").grid(
+            row=0, column=0, padx=(0, 12)
+        )
         self.slice_mode = tk.StringVar(value="left")
-        ttk.Radiobutton(container, text="Leftmost", value="left", variable=self.slice_mode).grid(
-            row=0, column=7, padx=2
-        )
-        ttk.Radiobutton(container, text="Rightmost", value="right", variable=self.slice_mode).grid(
-            row=0, column=8, padx=2
-        )
+        ttk.Radiobutton(
+            slice_frame,
+            text="Leftmost",
+            value="left",
+            variable=self.slice_mode,
+            style="Segment.TRadiobutton",
+        ).grid(row=0, column=1, padx=4)
+        ttk.Radiobutton(
+            slice_frame,
+            text="Rightmost",
+            value="right",
+            variable=self.slice_mode,
+            style="Segment.TRadiobutton",
+        ).grid(row=0, column=2, padx=4)
 
-        self.btn_theme = ttk.Button(container, text="Toggle Theme", command=self.toggle_theme)
-        self.btn_theme.grid(row=0, column=9, padx=6)
+        quick_tools = ttk.Frame(options_card, style="CardInner.TFrame")
+        quick_tools.grid(row=0, column=2, sticky=tk.E)
+        ttk.Button(
+            quick_tools,
+            text="Manage Formats…",
+            style="Ghost.TButton",
+            command=self._open_manage_formats,
+        ).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(
+            quick_tools,
+            text="Self Test",
+            style="Ghost.TButton",
+            command=self._self_test_dialog,
+        ).grid(row=0, column=1)
+
+        self.btn_theme = ttk.Button(
+            options_card,
+            text="Toggle Theme",
+            style="Ghost.TButton",
+            command=self.toggle_theme,
+        )
+        self.btn_theme.grid(row=0, column=3, sticky=tk.E)
+
+        container.rowconfigure(2, weight=1)
 
         # Notebook
         self.nb = ttk.Notebook(container)
-        self.nb.grid(row=1, column=0, columnspan=10, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(8, 0))
-        container.rowconfigure(1, weight=1)
+        self.nb.grid(row=2, column=0, columnspan=10, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(18, 0))
+        container.columnconfigure(0, weight=1)
 
         self.tab_summary = ttk.Frame(self.nb)
         self.tab_table = ttk.Frame(self.nb)
@@ -121,9 +299,11 @@ class App:
         cfg_dir = user_config_dir()
         self.status = ttk.Label(
             container,
-            text=f"Formats loaded: {len(self.formats)} | Config: {cfg_dir}",
+            text=f"Ready • Formats: {len(self.formats)} • Config: {cfg_dir}",
+            style="StatusBar.TLabel",
+            anchor=tk.W,
         )
-        self.status.grid(row=2, column=0, columnspan=10, sticky=(tk.W, tk.E), pady=(8, 0))
+        self.status.grid(row=3, column=0, columnspan=10, sticky=(tk.W, tk.E), pady=(18, 0))
 
         # Menu
         self._build_menu()
@@ -133,6 +313,15 @@ class App:
         self.last_format_checks: list[dict] = []
 
         self._apply_theme_classic_widgets()
+        self._apply_hero_theme()
+
+        self.input_var.trace_add("write", lambda *_: self._update_input_feedback())
+        self.input_entry.bind("<Return>", lambda _event: self.on_calculate())
+        self.input_entry.bind("<Control-Return>", lambda _event: self.on_calculate())
+        self.root.bind("<Control-l>", lambda _event: self.clear_input())
+        self.root.bind("<Control-Shift-V>", lambda _event: self.paste_from_clipboard())
+
+        self._update_input_feedback()
 
     # ---------------- Theme helpers ----------------
     def _init_styles(self) -> None:
@@ -144,46 +333,209 @@ class App:
 
     def _apply_theme(self) -> None:
         theme = self.theme
-        self.style.configure(".", font=("Consolas", 10))
-        self.root.configure(bg=theme.get("bg", "#f2f2f2"))
-        self.style.configure("TFrame", background=theme.get("bg"))
-        self.style.configure("TLabelframe", background=theme.get("bg"))
-        self.style.configure("TLabelframe.Label", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TLabel", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TCheckbutton", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TRadiobutton", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TNotebook", background=theme.get("bg"))
-        self.style.configure(
-            "TNotebook.Tab",
-            background=theme.get("panel", theme.get("bg")),
-            foreground=theme.get("text", "#333740"),
+        primary = theme.get("primary", "#1740b1")
+        primary_dark = theme.get("primaryDark", primary)
+        accent = theme.get("accent", "#ff7f32")
+        bg = theme.get("bg", "#f2f2f2")
+        panel = theme.get("panel", bg)
+        text = theme.get("text", "#1f2933")
+        muted = theme.get("mutedText", "#5a5f6b")
+        border = theme.get("border", "#d7dce5")
+
+        self.style.configure(".", font=("Segoe UI", 10))
+        self.root.configure(bg=bg)
+        self.style.configure("AppContainer.TFrame", background=bg)
+        self.style.configure("TFrame", background=bg)
+        self.style.configure("TLabelframe", background=bg)
+        self.style.configure("TLabelframe.Label", background=bg, foreground=text)
+        self.style.configure("TLabel", background=bg, foreground=text)
+        self.style.configure("TCheckbutton", background=bg, foreground=text)
+        self.style.configure("TRadiobutton", background=bg, foreground=text)
+
+        self.style.configure("Card.TFrame", background=panel, relief="flat")
+        self.style.configure("CardInner.TFrame", background=panel)
+        self.style.configure("SectionHeading.TLabel", background=panel, foreground=primary, font=("Segoe UI", 12, "bold"))
+        self.style.configure("FieldLabel.TLabel", background=panel, foreground=muted, font=("Segoe UI", 10, "bold"))
+        self.style.configure("Subtle.TLabel", background=panel, foreground=muted)
+        self.style.configure("Info.TLabel", background=panel, foreground=text, font=("Segoe UI", 10))
+
+        self.style.configure("Primary.TButton", background=primary, foreground="#ffffff", padding=(14, 8))
+        self.style.map(
+            "Primary.TButton",
+            background=[("disabled", border), ("active", primary_dark)],
+            foreground=[("disabled", muted)],
         )
+        self.style.configure("Accent.TButton", background=accent, foreground="#ffffff", padding=(14, 8))
+        self.style.map(
+            "Accent.TButton",
+            background=[("disabled", border), ("active", theme.get("accentActive", accent))],
+            foreground=[("disabled", muted)],
+        )
+        self.style.configure("Ghost.TButton", background=panel, foreground=primary, padding=(12, 6))
+        self.style.map(
+            "Ghost.TButton",
+            background=[("active", theme.get("ghostActive", border))],
+            foreground=[("disabled", muted)],
+        )
+
+        self.style.configure("Toggle.TCheckbutton", background=panel, foreground=text)
+        self.style.configure("Segment.TRadiobutton", background=panel, foreground=text, padding=(8, 2))
+
+        self.style.configure(
+            "StatusBar.TLabel",
+            background=theme.get("statusBg", panel),
+            foreground=muted,
+            padding=(12, 6),
+        )
+
+        self.style.configure("Treeview", background=panel, fieldbackground=panel, foreground=text, bordercolor=border)
+        self.style.configure("Treeview.Heading", background=panel, foreground=text)
+
+        self.style.configure("TNotebook", background=panel, tabmargins=(8, 4, 8, 0))
+        self.style.configure("TNotebook.Tab", background=panel, foreground=muted, padding=(14, 8))
         self.style.map(
             "TNotebook.Tab",
-            background=[("selected", theme.get("panel", theme.get("bg")))],
-            foreground=[("selected", theme.get("text", "#333740"))],
+            background=[("selected", bg)],
+            foreground=[("selected", text)],
         )
-        panel = theme.get("panel", theme.get("bg"))
-        self.style.configure("Treeview", background=panel, fieldbackground=panel, foreground=theme.get("text", "#333740"))
-        self.style.configure("Treeview.Heading", background=panel, foreground=theme.get("text", "#333740"))
+
+        self.style.configure(
+            "Hero.Horizontal.TProgressbar",
+            background=primary,
+            troughcolor=theme.get("progressTrough", border),
+            bordercolor=panel,
+            lightcolor=primary,
+            darkcolor=primary_dark,
+        )
 
     def _apply_theme_classic_widgets(self) -> None:
         theme = self.theme
-        classic_widgets = [self.root, self.txt, self.canvas]
+        try:
+            self.root.configure(bg=theme.get("bg", "#f2f2f2"))
+        except tk.TclError:
+            pass
+
+        classic_widgets = [self.txt, self.canvas]
         for widget in classic_widgets:
             try:
-                widget.configure(bg=theme.get("bg", "#f2f2f2"), fg=theme.get("text", "#333740"))
+                widget.configure(bg=theme.get("panel", theme.get("bg", "#f2f2f2")), fg=theme.get("text", "#333740"))
             except tk.TclError:
                 widget.configure(bg=theme.get("bg", "#f2f2f2"))
+
+        self.canvas.configure(highlightthickness=0)
+
+    def _apply_hero_theme(self) -> None:
+        theme = self.theme
+        hero_bg = theme.get("heroBg", theme.get("primary", "#1740b1"))
+        hero_text = theme.get("heroText", "#ffffff")
+        hero_muted = theme.get("heroMuted", "#d6e0ff")
+        badge_bg = theme.get("heroBadgeBg", theme.get("accent", "#ff7f32"))
+        badge_text = theme.get("heroBadgeText", "#ffffff")
+        accent = theme.get("accent", "#ff7f32")
+
+        for widget in (self.hero, self.hero_content):
+            widget.configure(bg=hero_bg)
+        self.hero_accent.configure(bg=accent)
+        self.hero_title.configure(bg=hero_bg, fg=hero_text)
+        self.hero_subtitle.configure(bg=hero_bg, fg=hero_muted)
+        self.hero_badge.configure(bg=badge_bg, fg=badge_text)
 
     def toggle_theme(self) -> None:
         self.theme_mode = "dark" if self.theme_mode == "light" else "light"
         self.theme = self.theme_doc.get(self.theme_mode, self.theme_doc.get("light", {}))
         self._apply_theme()
         self._apply_theme_classic_widgets()
+        self._apply_hero_theme()
         self.theme_doc["last_mode"] = self.theme_mode
         save_theme_document(self.theme_doc)
         self.status.configure(text=f"Theme set to {self.theme_mode} mode")
+
+    def _refresh_format_lengths(self) -> None:
+        lengths: dict[int, list[str]] = {}
+        for fmt in self.formats.values():
+            lengths.setdefault(fmt.bit_length, []).append(fmt.name)
+        for names in lengths.values():
+            names.sort()
+        self.format_length_lookup = lengths
+        self.format_bit_lengths = sorted(lengths.keys())
+        if hasattr(self, "input_var"):
+            self._update_input_feedback()
+
+    def _nearest_bit_length(self, bit_length: int) -> tuple[int | None, list[str]]:
+        if not self.format_bit_lengths or bit_length <= 0:
+            return None, []
+        nearest = min(self.format_bit_lengths, key=lambda target: abs(target - bit_length))
+        return nearest, self.format_length_lookup.get(nearest, [])
+
+    def _update_input_feedback(self) -> None:
+        if not hasattr(self, "input_var"):
+            return
+        raw_value = self.input_var.get()
+        cleaned = clean_input(raw_value)
+        condensed = cleaned.replace(" ", "").replace("-", "").replace("_", "")
+        if condensed.startswith(("0x", "0X")):
+            condensed = condensed[2:]
+
+        if not condensed:
+            self.input_feedback.configure(text="Waiting for input…", style="Info.TLabel")
+            self.bit_progress.configure(value=0)
+            self.bit_progress_label.configure(text="")
+            return
+
+        if is_binary(condensed):
+            detected_type = "Binary"
+            bit_length = len(condensed)
+        elif is_hex(condensed):
+            detected_type = "Hexadecimal"
+            bit_length = len(condensed) * 4
+        else:
+            self.input_feedback.configure(
+                text="Input contains characters outside binary/hex ranges. Only 0-1 or 0-9/A-F are supported.",
+                style="Info.TLabel",
+            )
+            self.bit_progress.configure(value=0)
+            self.bit_progress_label.configure(text="")
+            return
+
+        nearest, names = self._nearest_bit_length(bit_length)
+        if nearest:
+            percent = max(0, min(100, int((bit_length / nearest) * 100))) if nearest else 0
+            self.bit_progress.configure(value=percent)
+            format_hint = ", ".join(names[:3]) + ("…" if len(names) > 3 else "")
+            if percent == 100:
+                status = f"Perfect match for {nearest}-bit formats: {format_hint or 'multiple entries'}"
+            else:
+                status = (
+                    f"{bit_length} bits detected • Closest catalogued format: {nearest} bits "
+                    f"({format_hint or 'see formats list'})"
+                )
+            self.bit_progress_label.configure(text=status)
+        else:
+            self.bit_progress.configure(value=0)
+            self.bit_progress_label.configure(text=f"{bit_length} bits detected")
+
+        display_text = f"Detected {detected_type} payload • {bit_length} bits"
+        if detected_type == "Hexadecimal":
+            display_text += " • Converted to binary automatically"
+        self.input_feedback.configure(text=display_text, style="Info.TLabel")
+
+    def paste_from_clipboard(self) -> None:
+        try:
+            clipboard = self.root.clipboard_get()
+        except tk.TclError:
+            clipboard = ""
+        if clipboard:
+            self.input_var.set(clipboard)
+            self.input_entry.icursor(tk.END)
+            self.input_entry.focus_set()
+            self.status.configure(text="Payload pasted from clipboard")
+        else:
+            self.status.configure(text="Clipboard is empty or unavailable")
+
+    def clear_input(self) -> None:
+        self.input_var.set("")
+        self.input_entry.focus_set()
+        self.status.configure(text="Input cleared")
 
     # ---------------- Menu ----------------
     def _build_menu(self) -> None:
@@ -233,6 +585,7 @@ class App:
         self.format_repo.merge(incoming)
         self.formats_doc = self.format_repo.document
         self.formats = self.format_repo.formats
+        self._refresh_format_lengths()
         self.status.configure(text=f"Formats loaded: {len(self.formats)} (merged)")
 
     def _export_formats(self) -> None:
@@ -311,6 +664,7 @@ class App:
             self.formats_doc["formats"] = [f for f in self.formats_doc.get("formats", []) if f.get("name") != name]
             self.format_repo.update(self.formats_doc)
             self.formats = self.format_repo.formats
+            self._refresh_format_lengths()
             tree.delete(item)
             self.status.configure(text=f"Formats loaded: {len(self.formats)} (deleted '{name}')")
 
@@ -327,6 +681,7 @@ class App:
         self.formats_doc.setdefault("formats", []).append(clone)
         self.format_repo.update(self.formats_doc)
         self.formats = self.format_repo.formats
+        self._refresh_format_lengths()
         tree.insert("", tk.END, values=(clone.get("name"), clone.get("bit_length")))
         self.status.configure(text=f"Formats loaded: {len(self.formats)} (cloned)")
 
@@ -554,6 +909,7 @@ class App:
 
         self.format_repo.update(self.formats_doc)
         self.formats = self.format_repo.formats
+        self._refresh_format_lengths()
 
         listing.delete(*listing.get_children(""))
         for fmt in self.formats_doc.get("formats", []):
@@ -647,6 +1003,9 @@ class App:
         exact, compatible = self._detect_formats(binary_string)
         if not exact and not compatible:
             self.txt.insert(tk.END, "No matching formats found.\n")
+            self.status.configure(
+                text=f"Analyzed {len(binary_string)} bits • No matching formats"
+            )
             return
 
         self.last_rows_for_csv = []
@@ -674,6 +1033,11 @@ class App:
             )
 
         self._draw_parity_visualizer()
+        total_matches = len(exact) + len(compatible)
+        match_text = "format" if total_matches == 1 else "formats"
+        self.status.configure(
+            text=f"Analyzed {len(binary_string)} bits • {total_matches} matching {match_text}"
+        )
 
     def _detect_formats(self, binary_string: str):
         exact = []
@@ -769,17 +1133,18 @@ class App:
         text = self.txt.get("1.0", tk.END)
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
-        messagebox.showinfo("Copied", "Results copied to clipboard.")
+        self.status.configure(text="Results copied to clipboard")
 
     def copy_selected_table(self) -> None:
         selected = self.tree.focus()
         if not selected:
+            self.status.configure(text="Select a table row to copy")
             return
         values = self.tree.item(selected, "values")
         copy_text = "\t".join(str(value) for value in values)
         self.root.clipboard_clear()
         self.root.clipboard_append(copy_text)
-        messagebox.showinfo("Copied", "Selected row copied.")
+        self.status.configure(text="Selected row copied to clipboard")
 
     def export_csv(self) -> None:
         if not self.last_rows_for_csv:
