@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "format_pack_version": "2025.12.18",
+  "format_pack_version": "2025.12.30",
   "formats": [
     {
       "name": "H10301 - 26-bit",
@@ -461,811 +461,114 @@
       "bit_length": 200,
       "fields": [
         {
-          "name": "SS (Start Sentinel) [0xB]",
-          "start": 0,
-          "end": 3,
-          "view": "int, hex"
-        },
-        {
-          "name": "SS (Start Sentinel) (parity)",
-          "start": 4,
-          "end": 4,
-          "role": "parity"
-        },
-        {
-          "name": "AC-1",
-          "start": 5,
-          "end": 8,
-          "view": "int"
-        },
-        {
-          "name": "AC-1 (parity)",
-          "start": 9,
-          "end": 9,
-          "role": "parity"
-        },
-        {
-          "name": "AC-2",
-          "start": 10,
-          "end": 13,
-          "view": "int"
-        },
-        {
-          "name": "AC-2 (parity)",
-          "start": 14,
-          "end": 14,
-          "role": "parity"
-        },
-        {
-          "name": "AC-3",
-          "start": 15,
-          "end": 18,
-          "view": "int"
-        },
-        {
-          "name": "AC-3 (parity)",
-          "start": 19,
-          "end": 19,
-          "role": "parity"
-        },
-        {
-          "name": "AC-4",
-          "start": 20,
-          "end": 23,
-          "view": "int"
-        },
-        {
-          "name": "AC-4 (parity)",
-          "start": 24,
-          "end": 24,
-          "role": "parity"
-        },
-        {
-          "name": "FS-1 [0xD]",
-          "start": 25,
-          "end": 28,
-          "view": "int, hex"
-        },
-        {
-          "name": "FS-1 (parity)",
-          "start": 29,
-          "end": 29,
-          "role": "parity"
-        },
-        {
-          "name": "SC-1",
-          "start": 30,
-          "end": 33,
-          "view": "int"
-        },
-        {
-          "name": "SC-1 (parity)",
-          "start": 34,
-          "end": 34,
-          "role": "parity"
-        },
-        {
-          "name": "SC-2",
-          "start": 35,
-          "end": 38,
-          "view": "int"
-        },
-        {
-          "name": "SC-2 (parity)",
-          "start": 39,
-          "end": 39,
-          "role": "parity"
-        },
-        {
-          "name": "SC-3",
-          "start": 40,
-          "end": 43,
-          "view": "int"
-        },
-        {
-          "name": "SC-3 (parity)",
-          "start": 44,
-          "end": 44,
-          "role": "parity"
-        },
-        {
-          "name": "SC-4",
-          "start": 45,
-          "end": 48,
-          "view": "int"
-        },
-        {
-          "name": "SC-4 (parity)",
-          "start": 49,
-          "end": 49,
-          "role": "parity"
-        },
-        {
-          "name": "FS-2 [0xD]",
-          "start": 50,
-          "end": 53,
-          "view": "int, hex"
-        },
-        {
-          "name": "FS-2 (parity)",
-          "start": 54,
-          "end": 54,
-          "role": "parity"
-        },
-        {
-          "name": "CN-1",
-          "start": 55,
-          "end": 58,
-          "view": "int"
-        },
-        {
-          "name": "CN-1 (parity)",
-          "start": 59,
-          "end": 59,
-          "role": "parity"
-        },
-        {
-          "name": "CN-2",
-          "start": 60,
-          "end": 63,
-          "view": "int"
-        },
-        {
-          "name": "CN-2 (parity)",
-          "start": 64,
-          "end": 64,
-          "role": "parity"
-        },
-        {
-          "name": "CN-3",
-          "start": 65,
-          "end": 68,
-          "view": "int"
-        },
-        {
-          "name": "CN-3 (parity)",
-          "start": 69,
-          "end": 69,
-          "role": "parity"
-        },
-        {
-          "name": "CN-4",
-          "start": 70,
-          "end": 73,
-          "view": "int"
-        },
-        {
-          "name": "CN-4 (parity)",
-          "start": 74,
-          "end": 74,
-          "role": "parity"
-        },
-        {
-          "name": "CN-5",
-          "start": 75,
-          "end": 78,
-          "view": "int"
-        },
-        {
-          "name": "CN-5 (parity)",
-          "start": 79,
-          "end": 79,
-          "role": "parity"
-        },
-        {
-          "name": "CN-6",
-          "start": 80,
-          "end": 83,
-          "view": "int"
-        },
-        {
-          "name": "CN-6 (parity)",
-          "start": 84,
-          "end": 84,
-          "role": "parity"
-        },
-        {
-          "name": "FS-3 [0xD]",
-          "start": 85,
-          "end": 88,
-          "view": "int, hex"
-        },
-        {
-          "name": "FS-3 (parity)",
-          "start": 89,
-          "end": 89,
-          "role": "parity"
-        },
-        {
-          "name": "CS",
-          "start": 90,
-          "end": 93,
-          "view": "int"
-        },
-        {
-          "name": "CS (parity)",
-          "start": 94,
-          "end": 94,
-          "role": "parity"
-        },
-        {
-          "name": "FS-4 [0xD]",
-          "start": 95,
-          "end": 98,
-          "view": "int, hex"
-        },
-        {
-          "name": "FS-4 (parity)",
-          "start": 99,
-          "end": 99,
-          "role": "parity"
-        },
-        {
-          "name": "CI",
-          "start": 100,
-          "end": 103,
-          "view": "int"
-        },
-        {
-          "name": "CI (parity)",
-          "start": 104,
-          "end": 104,
-          "role": "parity"
-        },
-        {
-          "name": "FS-5 [0xD]",
-          "start": 105,
-          "end": 108,
-          "view": "int, hex"
-        },
-        {
-          "name": "FS-5 (parity)",
-          "start": 109,
-          "end": 109,
-          "role": "parity"
-        },
-        {
-          "name": "PI-01",
-          "start": 110,
-          "end": 113,
-          "view": "int"
-        },
-        {
-          "name": "PI-01 (parity)",
-          "start": 114,
-          "end": 114,
-          "role": "parity"
-        },
-        {
-          "name": "PI-02",
-          "start": 115,
-          "end": 118,
-          "view": "int"
-        },
-        {
-          "name": "PI-02 (parity)",
-          "start": 119,
-          "end": 119,
-          "role": "parity"
-        },
-        {
-          "name": "PI-03",
-          "start": 120,
-          "end": 123,
-          "view": "int"
-        },
-        {
-          "name": "PI-03 (parity)",
-          "start": 124,
-          "end": 124,
-          "role": "parity"
-        },
-        {
-          "name": "PI-04",
-          "start": 125,
-          "end": 128,
-          "view": "int"
-        },
-        {
-          "name": "PI-04 (parity)",
-          "start": 129,
-          "end": 129,
-          "role": "parity"
-        },
-        {
-          "name": "PI-05",
-          "start": 130,
-          "end": 133,
-          "view": "int"
-        },
-        {
-          "name": "PI-05 (parity)",
-          "start": 134,
-          "end": 134,
-          "role": "parity"
-        },
-        {
-          "name": "PI-06",
-          "start": 135,
-          "end": 138,
-          "view": "int"
-        },
-        {
-          "name": "PI-06 (parity)",
-          "start": 139,
-          "end": 139,
-          "role": "parity"
-        },
-        {
-          "name": "PI-07",
-          "start": 140,
-          "end": 143,
-          "view": "int"
-        },
-        {
-          "name": "PI-07 (parity)",
-          "start": 144,
-          "end": 144,
-          "role": "parity"
-        },
-        {
-          "name": "PI-08",
-          "start": 145,
-          "end": 148,
-          "view": "int"
-        },
-        {
-          "name": "PI-08 (parity)",
-          "start": 149,
-          "end": 149,
-          "role": "parity"
-        },
-        {
-          "name": "PI-09",
-          "start": 150,
-          "end": 153,
-          "view": "int"
-        },
-        {
-          "name": "PI-09 (parity)",
-          "start": 154,
-          "end": 154,
-          "role": "parity"
-        },
-        {
-          "name": "PI-10",
-          "start": 155,
-          "end": 158,
-          "view": "int"
-        },
-        {
-          "name": "PI-10 (parity)",
-          "start": 159,
-          "end": 159,
-          "role": "parity"
-        },
-        {
-          "name": "OC",
-          "start": 160,
-          "end": 163,
-          "view": "int"
-        },
-        {
-          "name": "OC (parity)",
-          "start": 164,
-          "end": 164,
-          "role": "parity"
-        },
-        {
-          "name": "OI-1",
-          "start": 165,
-          "end": 168,
-          "view": "int"
-        },
-        {
-          "name": "OI-1 (parity)",
-          "start": 169,
-          "end": 169,
-          "role": "parity"
-        },
-        {
-          "name": "OI-2",
-          "start": 170,
-          "end": 173,
-          "view": "int"
-        },
-        {
-          "name": "OI-2 (parity)",
-          "start": 174,
-          "end": 174,
-          "role": "parity"
-        },
-        {
-          "name": "OI-3",
-          "start": 175,
-          "end": 178,
-          "view": "int"
-        },
-        {
-          "name": "OI-3 (parity)",
-          "start": 179,
-          "end": 179,
-          "role": "parity"
-        },
-        {
-          "name": "OI-4",
-          "start": 180,
-          "end": 183,
-          "view": "int"
-        },
-        {
-          "name": "OI-4 (parity)",
-          "start": 184,
-          "end": 184,
-          "role": "parity"
-        },
-        {
-          "name": "POA",
-          "start": 185,
-          "end": 188,
-          "view": "int"
-        },
-        {
-          "name": "POA (parity)",
-          "start": 189,
-          "end": 189,
-          "role": "parity"
-        },
-        {
-          "name": "ES (End Sentinel) [0xF]",
-          "start": 190,
-          "end": 193,
-          "view": "int, hex"
-        },
-        {
-          "name": "ES (End Sentinel) (parity)",
-          "start": 194,
-          "end": 194,
-          "role": "parity"
-        },
-        {
-          "name": "LRC [0xD]",
-          "start": 195,
-          "end": 198,
-          "view": "int, hex"
-        },
-        {
-          "name": "LRC (parity)",
-          "start": 199,
-          "end": 199,
-          "role": "parity"
-        }
-      ],
-      "parity": [
-        {
-          "type": "odd",
-          "per_character": true,
-          "character_width": 5
-        }
-      ],
-      "bit_order": "LSB"
-    },
-    {
-      "name": "FASC-N (CHUID) - 200-bit (raw 5-bit chars)",
-      "bit_length": 200,
-      "fields": [
-        {
-          "name": "SS (Start Sentinel) [0xB]",
+          "name": "SS (Start Sentinel)",
           "start": 0,
           "end": 4,
-          "view": "int, hex"
-        },
-        {
-          "name": "AC-1",
-          "start": 5,
-          "end": 9
-        },
-        {
-          "name": "AC-2",
-          "start": 10,
-          "end": 14
-        },
-        {
-          "name": "AC-3",
-          "start": 15,
-          "end": 19
-        },
-        {
-          "name": "AC-4",
-          "start": 20,
-          "end": 24
-        },
-        {
-          "name": "FS-1 [0xD]",
-          "start": 25,
-          "end": 29,
-          "view": "int, hex"
-        },
-        {
-          "name": "SC-1",
-          "start": 30,
-          "end": 34
-        },
-        {
-          "name": "SC-2",
-          "start": 35,
-          "end": 39
-        },
-        {
-          "name": "SC-3",
-          "start": 40,
-          "end": 44
-        },
-        {
-          "name": "SC-4",
-          "start": 45,
-          "end": 49
-        },
-        {
-          "name": "FS-2 [0xD]",
-          "start": 50,
-          "end": 54,
-          "view": "int, hex"
-        },
-        {
-          "name": "CN-1",
-          "start": 55,
-          "end": 59
-        },
-        {
-          "name": "CN-2",
-          "start": 60,
-          "end": 64
-        },
-        {
-          "name": "CN-3",
-          "start": 65,
-          "end": 69
-        },
-        {
-          "name": "CN-4",
-          "start": 70,
-          "end": 74
-        },
-        {
-          "name": "CN-5",
-          "start": 75,
-          "end": 79
-        },
-        {
-          "name": "CN-6",
-          "start": 80,
-          "end": 84
-        },
-        {
-          "name": "FS-3 [0xD]",
-          "start": 85,
-          "end": 89,
-          "view": "int, hex"
-        },
-        {
-          "name": "CS",
-          "start": 90,
-          "end": 94
-        },
-        {
-          "name": "FS-4 [0xD]",
-          "start": 95,
-          "end": 99,
-          "view": "int, hex"
-        },
-        {
-          "name": "CI",
-          "start": 100,
-          "end": 104
-        },
-        {
-          "name": "FS-5 [0xD]",
-          "start": 105,
-          "end": 109,
-          "view": "int, hex"
-        },
-        {
-          "name": "PI-01",
-          "start": 110,
-          "end": 114
-        },
-        {
-          "name": "PI-02",
-          "start": 115,
-          "end": 119
-        },
-        {
-          "name": "PI-03",
-          "start": 120,
-          "end": 124
-        },
-        {
-          "name": "PI-04",
-          "start": 125,
-          "end": 129
-        },
-        {
-          "name": "PI-05",
-          "start": 130,
-          "end": 134
-        },
-        {
-          "name": "PI-06",
-          "start": 135,
-          "end": 139
-        },
-        {
-          "name": "PI-07",
-          "start": 140,
-          "end": 144
-        },
-        {
-          "name": "PI-08",
-          "start": 145,
-          "end": 149
-        },
-        {
-          "name": "PI-09",
-          "start": 150,
-          "end": 154
-        },
-        {
-          "name": "PI-10",
-          "start": 155,
-          "end": 159
-        },
-        {
-          "name": "OC",
-          "start": 160,
-          "end": 164
-        },
-        {
-          "name": "OI-1",
-          "start": 165,
-          "end": 169
-        },
-        {
-          "name": "OI-2",
-          "start": 170,
-          "end": 174
-        },
-        {
-          "name": "OI-3",
-          "start": 175,
-          "end": 179
-        },
-        {
-          "name": "OI-4",
-          "start": 180,
-          "end": 184
-        },
-        {
-          "name": "POA",
-          "start": 185,
-          "end": 189
-        },
-        {
-          "name": "ES (End Sentinel) [0xF]",
-          "start": 190,
-          "end": 194,
-          "view": "int, hex"
-        },
-        {
-          "name": "LRC [0xD]",
-          "start": 195,
-          "end": 199,
-          "view": "int, hex"
-        }
-      ],
-      "parity": [
-        {
-          "type": "odd",
-          "per_character": true,
-          "character_width": 5
-        }
-      ]
-    },
-    {
-      "name": "FASC-N (CHUID) - 200-bit (grouped integers)",
-      "bit_length": 200,
-      "fields": [
-        {
-          "name": "Start Sentinel (SS)",
-          "start": 0,
-          "end": 4
+          "view": "ansi_bcd5"
         },
         {
           "name": "Agency Code (AC)",
           "start": 5,
-          "end": 24
+          "end": 24,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "Field Separator",
+          "name": "FS-1 (Field Separator)",
           "start": 25,
-          "end": 29
+          "end": 29,
+          "view": "ansi_bcd5"
         },
         {
           "name": "System Code (SC)",
           "start": 30,
-          "end": 49
+          "end": 49,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "Field Separator",
+          "name": "FS-2 (Field Separator)",
           "start": 50,
-          "end": 54
+          "end": 54,
+          "view": "ansi_bcd5"
         },
         {
           "name": "Card Number (CN)",
           "start": 55,
-          "end": 84
+          "end": 84,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "Field Separator",
+          "name": "FS-3 (Field Separator)",
           "start": 85,
-          "end": 89
+          "end": 89,
+          "view": "ansi_bcd5"
         },
         {
           "name": "Credential Series (CS)",
           "start": 90,
-          "end": 94
+          "end": 94,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "Field Separator",
+          "name": "FS-4 (Field Separator)",
           "start": 95,
-          "end": 99
+          "end": 99,
+          "view": "ansi_bcd5"
         },
         {
           "name": "Credential Issue (CI)",
           "start": 100,
-          "end": 104
+          "end": 104,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "Field Separator",
+          "name": "FS-5 (Field Separator)",
           "start": 105,
-          "end": 109
+          "end": 109,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "Personal Identifier (PI)",
+          "name": "EDIPI",
           "start": 110,
-          "end": 159
+          "end": 159,
+          "view": "ansi_bcd5"
         },
         {
           "name": "Organizational Category (OC)",
           "start": 160,
-          "end": 164
+          "end": 164,
+          "view": "ansi_bcd5"
         },
         {
           "name": "Organizational Identifier (OI)",
           "start": 165,
-          "end": 184
+          "end": 184,
+          "view": "ansi_bcd5"
         },
         {
           "name": "Person/Org Association (POA)",
           "start": 185,
-          "end": 189
+          "end": 189,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "End Sentinel (ES)",
+          "name": "ES (End Sentinel)",
           "start": 190,
-          "end": 194
+          "end": 194,
+          "view": "ansi_bcd5"
         },
         {
-          "name": "Longitudinal Redundancy Check (LRC)",
+          "name": "LRC",
           "start": 195,
-          "end": 199
+          "end": 199,
+          "view": "ansi_bcd5"
         }
       ],
       "parity": [
         {
           "type": "odd",
           "per_character": true,
-          "character_width": 5
+          "character_width": 5,
+          "parity_position": "msb"
         }
       ]
     },
