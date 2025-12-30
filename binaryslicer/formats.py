@@ -42,6 +42,7 @@ class NormalizedFormat:
     parity_coverage: List[Dict]
     raw: Dict
     field_views: Dict[str, str] = field(default_factory=dict)
+    field_hidden: Dict[str, bool] = field(default_factory=dict)
 
 
 class FormatRepository:
@@ -128,6 +129,7 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
 
     fields: Dict[str, FieldRange] = {}
     views: Dict[str, str] = {}
+    hidden: Dict[str, bool] = {}
 
     for fld in entry.get("fields", []) or []:
         if not isinstance(fld, dict):
@@ -137,6 +139,8 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
         view = fld.get("view") or fld.get("decode")  # allow either key
         if isinstance(view, str) and view.strip():
             views[fname] = view.strip().lower()
+        if bool(fld.get("hidden")):
+            hidden[fname] = True
 
     parity_cov: List[Dict] = []
     for rule in _normalize_parity_to_list(entry.get("parity")):
@@ -168,6 +172,7 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
         parity_coverage=parity_cov,
         raw=entry,
         field_views=views,
+        field_hidden=hidden,
     )
 
 
@@ -198,7 +203,12 @@ _SENTINEL_MAP = {
 }
 
 
-def _ansi_bcd5_digit_from_chunk(chunk5: str, parity_position: str = "msb") -> Optional[str]:
+def _ansi_bcd5_digit_from_chunk(
+    chunk5: str,
+    parity_position: str = "msb",
+    allow_extended: bool = False,
+    coerce_invalid: bool = False,
+) -> Optional[str]:
     """Decode a single 5-bit ANSI BCD chunk to a digit.
 
     Excel logic (as seen in the provided sheet) effectively:
@@ -225,6 +235,10 @@ def _ansi_bcd5_digit_from_chunk(chunk5: str, parity_position: str = "msb") -> Op
     val = int(data_rev, 2)
     if 0 <= val <= 9:
         return str(val)
+    if allow_extended:
+        return f"{val:X}"
+    if coerce_invalid:
+        return "0"
     return None
 
 
@@ -238,6 +252,8 @@ def decode_ansi_bcd5_field(bits: str, view: str | None = None) -> Dict[str, obje
     }
 
     parity_position = "lsb" if view and "lsb" in view else "msb"
+    allow_extended = bool(view and "hex" in view)
+    coerce_invalid = bool(view and ("coerce" in view or "digit" in view))
 
     if not bits or len(bits) % 5 != 0:
         # Not aligned, fall back to binary integer interpretation
@@ -253,7 +269,12 @@ def decode_ansi_bcd5_field(bits: str, view: str | None = None) -> Dict[str, obje
     tokens: List[str] = []
 
     for ch in chunks:
-        d = _ansi_bcd5_digit_from_chunk(ch, parity_position=parity_position)
+        d = _ansi_bcd5_digit_from_chunk(
+            ch,
+            parity_position=parity_position,
+            allow_extended=allow_extended,
+            coerce_invalid=coerce_invalid,
+        )
         if d is not None:
             digits.append(d)
             tokens.append(d)
@@ -284,6 +305,7 @@ def extract_fields(binary_string: str, fmt: NormalizedFormat) -> Dict[str, Dict]
     for field_name, (start, end) in fmt.fields.items():
         bits = extract_bits(binary_string, start, end)
         view = (fmt.field_views.get(field_name) or "").lower().strip()
+        hidden = fmt.field_hidden.get(field_name, False)
 
         if view in ("ansi_bcd5", "ansi_bcd") or view.startswith("ansi_bcd5"):
             decoded = decode_ansi_bcd5_field(bits, view=view)
@@ -303,6 +325,7 @@ def extract_fields(binary_string: str, fmt: NormalizedFormat) -> Dict[str, Dict]
             "len": end - start + 1,
             "range": (start, end),
             "view": view or "binary",
+            "hidden": hidden,
         }
     return fields
 

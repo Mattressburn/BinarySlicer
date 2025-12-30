@@ -706,6 +706,8 @@ class App:
         self.txt.insert(tk.END, f"Format: {name}\n")
         fields = extract_fields(binary_string, fmt)
         for field, meta in fields.items():
+            if meta.get("hidden"):
+                continue
             self.txt.insert(
                 tk.END,
                 f"  {field:14}: {meta['int']} (hex {meta['hex']}), bits[{meta['len']}]={meta['bits']}\n",
