@@ -731,9 +731,10 @@ class App:
                     status = "FAIL"
                 else:
                     status = "(no parity bit)"
+                note = " (advisory)" if not result.get("gate", True) else ""
                 self.txt.insert(
                     tk.END,
-                    f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status} "
+                    f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status}{note} "
                     f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']})\n",
                 )
             self.last_format_checks = parity
@@ -743,7 +744,10 @@ class App:
         parity = verify_parity(binary_string, fmt)
         if not parity:
             return True
-        return all(result.get("ok", True) for result in parity)
+        for result in parity:
+            if result.get("gate", True) and result.get("ok") is False:
+                return False
+        return True
 
     # ---------------- Visualizer ----------------
     def _draw_parity_visualizer(self) -> None:
