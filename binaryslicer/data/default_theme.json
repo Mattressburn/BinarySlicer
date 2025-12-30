@@ -10,6 +10,7 @@
     "primaryDark": "#000070",
     "accent": "#00adff",
     "success": "#75e600",
+    "error": "#ff4d4f",
     "border": "#e5e7eb",
     "shadow": "rgba(0,0,0,0.08)",
     "gradient": [
@@ -26,6 +27,7 @@
     "primaryDark": "#1740b1",
     "accent": "#2ee9ff",
     "success": "#75e600",
+    "error": "#ff4d4f",
     "border": "#243057",
     "shadow": "rgba(0,0,0,0.35)",
     "gradient": [

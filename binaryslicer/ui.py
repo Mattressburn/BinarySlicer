@@ -13,9 +13,13 @@ from tkinter import filedialog, messagebox, ttk
 
 from .decoder import format_binary_groups, process_input
 from .formats import (
+    FormatValidationError,
     FormatRepository,
     NormalizedFormat,
     extract_fields,
+    find_best_offsets,
+    normalize_format_entry,
+    validate_format_entry,
     verify_parity,
 )
 from .paths import application_dir, ensure_user_config_dir, user_config_dir
@@ -69,20 +73,23 @@ class App:
         )
 
         ttk.Label(container, text="Compatible slicing:").grid(row=0, column=6, padx=(12, 2))
-        self.slice_mode = tk.StringVar(value="left")
-        ttk.Radiobutton(container, text="Leftmost", value="left", variable=self.slice_mode).grid(
+        self.slice_mode = tk.StringVar(value="auto")
+        ttk.Radiobutton(container, text="Auto", value="auto", variable=self.slice_mode).grid(
             row=0, column=7, padx=2
         )
-        ttk.Radiobutton(container, text="Rightmost", value="right", variable=self.slice_mode).grid(
+        ttk.Radiobutton(container, text="Leftmost", value="left", variable=self.slice_mode).grid(
             row=0, column=8, padx=2
+        )
+        ttk.Radiobutton(container, text="Rightmost", value="right", variable=self.slice_mode).grid(
+            row=0, column=9, padx=2
         )
 
         self.btn_theme = ttk.Button(container, text="Toggle Theme", command=self.toggle_theme)
-        self.btn_theme.grid(row=0, column=9, padx=6)
+        self.btn_theme.grid(row=0, column=10, padx=6)
 
         # Notebook
         self.nb = ttk.Notebook(container)
-        self.nb.grid(row=1, column=0, columnspan=10, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(8, 0))
+        self.nb.grid(row=1, column=0, columnspan=11, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(8, 0))
         container.rowconfigure(1, weight=1)
 
         self.tab_summary = ttk.Frame(self.nb)
@@ -123,10 +130,26 @@ class App:
             container,
             text=f"Formats loaded: {len(self.formats)} | Config: {cfg_dir}",
         )
-        self.status.grid(row=2, column=0, columnspan=10, sticky=(tk.W, tk.E), pady=(8, 0))
+        self.status.grid(row=2, column=0, columnspan=11, sticky=(tk.W, tk.E), pady=(8, 0))
+        if self.format_repo.last_errors:
+            self.status.configure(text=f"Loaded with warnings: {self.format_repo.last_errors[0]}")
 
         # Menu
         self._build_menu()
+
+        # Keyboard shortcuts
+        shortcuts = {
+            "<Control-i>": self._import_formats,
+            "<Control-e>": self._export_formats,
+            "<Control-t>": self.toggle_theme,
+            "<Control-q>": self.root.destroy,
+            "<Command-i>": self._import_formats,
+            "<Command-e>": self._export_formats,
+            "<Command-t>": self.toggle_theme,
+            "<Command-q>": self.root.destroy,
+        }
+        for key, handler in shortcuts.items():
+            self.root.bind(key, lambda event, h=handler: h())
 
         self.last_rows_for_csv: list[dict] = []
         self.last_binary_used = ""
@@ -233,7 +256,10 @@ class App:
         self.format_repo.merge(incoming)
         self.formats_doc = self.format_repo.document
         self.formats = self.format_repo.formats
-        self.status.configure(text=f"Formats loaded: {len(self.formats)} (merged)")
+        if self.format_repo.last_errors:
+            self.status.configure(text=f"Import warnings: {self.format_repo.last_errors[0]}")
+        else:
+            self.status.configure(text=f"Formats loaded: {len(self.formats)} (merged)")
 
     def _export_formats(self) -> None:
         path = filedialog.asksaveasfilename(
@@ -245,7 +271,7 @@ class App:
             return
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(self.formats_doc, handle, indent=2)
-        messagebox.showinfo("Export", f"Formats exported to {path}")
+        self.status.configure(text=f"Formats exported to {path}")
 
     # ---------------- Manage formats ----------------
     def _open_manage_formats(self) -> None:
@@ -312,7 +338,10 @@ class App:
             self.format_repo.update(self.formats_doc)
             self.formats = self.format_repo.formats
             tree.delete(item)
-            self.status.configure(text=f"Formats loaded: {len(self.formats)} (deleted '{name}')")
+            if self.format_repo.last_errors:
+                self.status.configure(text=f"Delete completed with warnings: {self.format_repo.last_errors[0]}")
+            else:
+                self.status.configure(text=f"Formats loaded: {len(self.formats)} (deleted '{name}')")
 
     def _clone_selected_format(self, tree: ttk.Treeview) -> None:
         item = tree.focus()
@@ -328,7 +357,10 @@ class App:
         self.format_repo.update(self.formats_doc)
         self.formats = self.format_repo.formats
         tree.insert("", tk.END, values=(clone.get("name"), clone.get("bit_length")))
-        self.status.configure(text=f"Formats loaded: {len(self.formats)} (cloned)")
+        if self.format_repo.last_errors:
+            self.status.configure(text=f"Clone completed with warnings: {self.format_repo.last_errors[0]}")
+        else:
+            self.status.configure(text=f"Formats loaded: {len(self.formats)} (cloned)")
 
     def _edit_format(self, parent: tk.Misc, fmt: dict | None, tree: ttk.Treeview) -> None:
         win = tk.Toplevel(parent)
@@ -347,13 +379,16 @@ class App:
         bitlen_var = tk.StringVar(value=str(fmt.get("bit_length")) if fmt else "")
         ttk.Entry(body, textvariable=bitlen_var, width=12).grid(row=1, column=1, sticky=tk.W)
 
-        fields_frame = ttk.Labelframe(body, text="Fields (contiguous ranges)")
+        fields_frame = ttk.Labelframe(body, text="Fields (ranges)")
         fields_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=6)
-        fields_tree = ttk.Treeview(fields_frame, columns=("Name", "Start", "End"), show="headings", height=6)
-        for column in ("Name", "Start", "End"):
+        field_columns = ("Name", "Start", "End", "Role", "View", "Hidden")
+        fields_tree = ttk.Treeview(fields_frame, columns=field_columns, show="headings", height=6)
+        for column in field_columns:
             fields_tree.heading(column, text=column)
-            fields_tree.column(column, anchor=tk.W, width=120)
+            width = 140 if column == "Name" else 90
+            fields_tree.column(column, anchor=tk.W, width=width)
         fields_tree.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E))
+        fields_tree._payloads = {}  # type: ignore[attr-defined]
         ttk.Button(fields_frame, text="Add Field", command=lambda: self._add_field_row(fields_tree)).grid(row=1, column=0, pady=4)
         ttk.Button(fields_frame, text="Edit Field", command=lambda: self._edit_field_row(fields_tree)).grid(row=1, column=1, pady=4)
         ttk.Button(fields_frame, text="Delete Field", command=lambda: self._del_field_row(fields_tree)).grid(row=1, column=2, pady=4)
@@ -371,7 +406,15 @@ class App:
 
         if fmt:
             for field in fmt.get("fields", []):
-                fields_tree.insert("", tk.END, values=(field.get("name"), field.get("start"), field.get("end")))
+                name = field.get("name")
+                start = field.get("start")
+                end = field.get("end")
+                role = field.get("role", field.get("type", "field")) or "field"
+                view = field.get("view", field.get("decode", "")) or ""
+                hidden = "yes" if field.get("hidden") else ""
+                item_id = fields_tree.insert("", tk.END, values=(name, start, end, role, view, hidden))
+                extras = {k: v for k, v in field.items() if k not in {"name", "start", "end", "role", "view", "decode", "hidden"}}
+                fields_tree._payloads[item_id] = extras  # type: ignore[attr-defined]
             for rule in fmt.get("parity", []):
                 rule_type = rule.get("type", "even").lower()
                 for rng in rule.get("ranges", []):
@@ -408,9 +451,12 @@ class App:
     def _del_field_row(self, tree: ttk.Treeview) -> None:
         item = tree.focus()
         if item:
+            payloads = getattr(tree, "_payloads", {})
+            payloads.pop(item, None)
             tree.delete(item)
 
     def _field_edit_dialog(self, tree: ttk.Treeview, row) -> None:
+        payloads = getattr(tree, "_payloads", {})
         win = tk.Toplevel(self.root)
         win.title("Field")
         win.transient(self.root)
@@ -419,37 +465,61 @@ class App:
         frame = ttk.Frame(win, padding=10)
         frame.pack(fill=tk.BOTH, expand=True)
 
+        current = row[1] if row else ["", "", "", "field", "", ""]
         ttk.Label(frame, text="Name").grid(row=0, column=0, sticky=tk.W)
-        name_var = tk.StringVar(value=row[1][0] if row else "")
+        name_var = tk.StringVar(value=current[0] if current else "")
         ttk.Entry(frame, textvariable=name_var).grid(row=0, column=1, sticky=(tk.W, tk.E))
 
         ttk.Label(frame, text="Start").grid(row=1, column=0, sticky=tk.W)
-        start_var = tk.StringVar(value=row[1][1] if row else "0")
+        start_var = tk.StringVar(value=current[1] if len(current) > 1 else "0")
         ttk.Entry(frame, textvariable=start_var, width=8).grid(row=1, column=1, sticky=tk.W)
 
         ttk.Label(frame, text="End").grid(row=2, column=0, sticky=tk.W)
-        end_var = tk.StringVar(value=row[1][2] if row else "1")
+        end_var = tk.StringVar(value=current[2] if len(current) > 2 else "0")
         ttk.Entry(frame, textvariable=end_var, width=8).grid(row=2, column=1, sticky=tk.W)
+
+        ttk.Label(frame, text="Role").grid(row=3, column=0, sticky=tk.W)
+        role_var = tk.StringVar(value=current[3] if len(current) > 3 else "field")
+        ttk.Combobox(frame, textvariable=role_var, values=["field", "parity"], state="readonly").grid(
+            row=3, column=1, sticky=(tk.W, tk.E)
+        )
+
+        ttk.Label(frame, text="View").grid(row=4, column=0, sticky=tk.W)
+        view_var = tk.StringVar(value=current[4] if len(current) > 4 else "")
+        ttk.Entry(frame, textvariable=view_var).grid(row=4, column=1, sticky=(tk.W, tk.E))
+
+        hidden_var = tk.BooleanVar(value=(str(current[5]).lower() in ("yes", "true", "1")))
+        ttk.Checkbutton(frame, text="Hidden", variable=hidden_var).grid(row=5, column=0, sticky=tk.W, pady=4)
 
         def save_row() -> None:
             try:
                 start = int(start_var.get())
                 end = int(end_var.get())
-                if end <= start:
-                    messagebox.showerror("Field", "End must be > Start")
+                if end < start:
+                    messagebox.showerror("Field", "End must be >= Start")
                     return
             except ValueError:
                 messagebox.showerror("Field", "Start/End must be integers")
                 return
-            values = (name_var.get(), start, end)
+            values = (
+                name_var.get(),
+                start,
+                end,
+                role_var.get() or "field",
+                view_var.get(),
+                "yes" if hidden_var.get() else "",
+            )
             if row:
                 tree.item(row[0], values=values)
+                existing_extras = payloads.get(row[0], {})
+                payloads[row[0]] = existing_extras
             else:
-                tree.insert("", tk.END, values=values)
+                item_id = tree.insert("", tk.END, values=values)
+                payloads[item_id] = {}
             win.destroy()
 
-        ttk.Button(frame, text="Save", command=save_row).grid(row=3, column=0, columnspan=2, pady=8)
-        ttk.Button(frame, text="Cancel", command=win.destroy).grid(row=4, column=0, columnspan=2, pady=4)
+        ttk.Button(frame, text="Save", command=save_row).grid(row=6, column=0, columnspan=2, pady=8)
+        ttk.Button(frame, text="Cancel", command=win.destroy).grid(row=7, column=0, columnspan=2, pady=4)
 
         win.wait_window()
 
@@ -535,9 +605,28 @@ class App:
             return
 
         fields = []
+        payloads = getattr(fields_tree, "_payloads", {})
         for item in fields_tree.get_children(""):
-            fname, start, end = fields_tree.item(item, "values")
-            fields.append({"name": fname, "start": int(start), "end": int(end)})
+            fname, start, end, role, view, hidden = fields_tree.item(item, "values")
+            try:
+                start_int = int(start)
+                end_int = int(end)
+            except (TypeError, ValueError):
+                messagebox.showerror("Field", f"Field '{fname}' has invalid bounds.")
+                return
+            field_payload = dict(payloads.get(item, {}))
+            field_payload.update({"name": fname, "start": start_int, "end": end_int})
+            if role:
+                field_payload["role"] = role
+            if view:
+                field_payload["view"] = view
+            else:
+                field_payload.pop("view", None)
+            if hidden:
+                field_payload["hidden"] = True
+            else:
+                field_payload.pop("hidden", None)
+            fields.append(field_payload)
 
         parity = []
         for item in parity_tree.get_children(""):
@@ -545,6 +634,13 @@ class App:
             parity.append({"type": ptype, "ranges": [{"start": int(start), "end": int(end)}]})
 
         entry = {"name": name, "bit_length": bitlen, "fields": fields, "parity": parity}
+
+        try:
+            normalized = normalize_format_entry(entry)
+            validate_format_entry(entry, normalized)
+        except FormatValidationError as exc:
+            messagebox.showerror("Format", str(exc))
+            return
 
         if original and original in self.formats_doc.get("formats", []):
             idx = self.formats_doc["formats"].index(original)
@@ -559,7 +655,10 @@ class App:
         for fmt in self.formats_doc.get("formats", []):
             listing.insert("", tk.END, values=(fmt.get("name"), fmt.get("bit_length")))
 
-        self.status.configure(text=f"Formats loaded: {len(self.formats)} (saved)")
+        if self.format_repo.last_errors:
+            self.status.configure(text=f"Formats saved with warnings: {self.format_repo.last_errors[0]}")
+        else:
+            self.status.configure(text=f"Formats loaded: {len(self.formats)} (saved)")
         window.destroy()
 
     # ---------------- Self test ----------------
@@ -687,6 +786,8 @@ class App:
         return exact, compatible
 
     def _render_candidates(self, binary_string: str, candidates: list[tuple], slice_mode: str | None) -> bool:
+        if slice_mode == "auto":
+            return self._render_auto_candidates(binary_string, candidates)
         rendered = False
         for name, fmt in candidates:
             bit_length = fmt.bit_length
@@ -702,10 +803,37 @@ class App:
             rendered = True
         return rendered
 
+    def _render_auto_candidates(self, binary_string: str, candidates: list[tuple]) -> bool:
+        rendered = False
+        all_results: list[dict] = []
+        for name, fmt in candidates:
+            best = find_best_offsets(binary_string, fmt, step=1, top_n=3)
+            for cand in best:
+                all_results.append({"name": name, "fmt": fmt, "candidate": cand})
+        if not all_results:
+            return False
+        all_results.sort(key=lambda c: c["candidate"]["score_key"], reverse=True)
+        limit = max(3, min(len(all_results), 10))
+        for entry in all_results[:limit]:
+            cand = entry["candidate"]
+            stats = cand["stats"]
+            parity = cand["parity"]
+            if not self.show_fails.get() and stats["gated_fail"] > 0:
+                continue
+            display_name = (
+                f"{entry['name']} (auto offset +{cand['offset']}, "
+                f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
+            )
+            self._render_format(cand["bits"], display_name, entry["fmt"])
+            rendered = True
+        return rendered
+
     def _render_format(self, binary_string: str, name: str, fmt: NormalizedFormat) -> None:
         self.txt.insert(tk.END, f"Format: {name}\n")
         fields = extract_fields(binary_string, fmt)
         for field, meta in fields.items():
+            if meta.get("hidden"):
+                continue
             self.txt.insert(
                 tk.END,
                 f"  {field:14}: {meta['int']} (hex {meta['hex']}), bits[{meta['len']}]={meta['bits']}\n",
@@ -731,10 +859,12 @@ class App:
                     status = "FAIL"
                 else:
                     status = "(no parity bit)"
+                note = " (advisory)" if not result.get("gate", True) else ""
+                parity_loc = f"; parity_bit={result.get('parity_bit')}" if result.get("parity_bit") is not None else ""
                 self.txt.insert(
                     tk.END,
-                    f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status} "
-                    f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']})\n",
+                    f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status}{note} "
+                    f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']}{parity_loc})\n",
                 )
             self.last_format_checks = parity
         self.txt.insert(tk.END, "\n")
@@ -743,7 +873,10 @@ class App:
         parity = verify_parity(binary_string, fmt)
         if not parity:
             return True
-        return all(result.get("ok", True) for result in parity)
+        for result in parity:
+            if result.get("gate", True) and result.get("ok") is False:
+                return False
+        return True
 
     # ---------------- Visualizer ----------------
     def _draw_parity_visualizer(self) -> None:
@@ -754,22 +887,32 @@ class App:
         height = self.canvas.winfo_height() or 60
         total = len(self.last_binary_used)
         mid = height // 2
-        self.canvas.create_line(10, mid, width - 10, mid, fill="#4b6cff", width=4)
+        theme = self.theme
+        base_color = theme.get("primary", "#4b6cff")
+        even_color = theme.get("accent", "#00adff")
+        odd_color = theme.get("success", "#75e600")
+        fail_color = theme.get("error", "#ff4d4f")
+        marker_color = theme.get("text", "#333740")
+
+        self.canvas.create_line(10, mid, width - 10, mid, fill=base_color, width=4)
         for result in self.last_format_checks:
             start, end = result["coverage"]
             x1 = 10 + (width - 20) * (start / total)
             x2 = 10 + (width - 20) * (end / total)
-            color = "#00adff" if result["type"] == "even" else "#75e600"
+            color = even_color if result["type"] == "even" else odd_color
             self.canvas.create_rectangle(x1, mid - 10, x2, mid + 10, fill=color, outline="")
             if result["ok"] is False:
-                self.canvas.create_rectangle(x1, mid - 10, x2, mid + 10, fill="#ff4d4f", outline="", stipple="gray25")
+                self.canvas.create_rectangle(x1, mid - 10, x2, mid + 10, fill=fail_color, outline="", stipple="gray25")
+            if result.get("parity_bit") is not None:
+                px = 10 + (width - 20) * (result["parity_bit"] / total)
+                self.canvas.create_line(px, mid - 14, px, mid + 14, fill=marker_color, width=2)
 
     # ---------------- Copy / Export ----------------
     def copy_results(self) -> None:
         text = self.txt.get("1.0", tk.END)
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
-        messagebox.showinfo("Copied", "Results copied to clipboard.")
+        self.status.configure(text="Results copied to clipboard.")
 
     def copy_selected_table(self) -> None:
         selected = self.tree.focus()
@@ -779,7 +922,7 @@ class App:
         copy_text = "\t".join(str(value) for value in values)
         self.root.clipboard_clear()
         self.root.clipboard_append(copy_text)
-        messagebox.showinfo("Copied", "Selected row copied.")
+        self.status.configure(text="Selected row copied.")
 
     def export_csv(self) -> None:
         if not self.last_rows_for_csv:
@@ -800,7 +943,7 @@ class App:
             )
             writer.writeheader()
             writer.writerows(self.last_rows_for_csv)
-        messagebox.showinfo("Exported", f"Saved to {path}")
+        self.status.configure(text=f"CSV exported to {path}")
 
 
 def main() -> None:
