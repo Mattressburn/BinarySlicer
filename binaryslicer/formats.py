@@ -152,13 +152,14 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
                     "parity_position": str(rule.get("parity_position", "msb")).lower(),
                     "start": int(rule.get("start", 0)),
                     "end": int(rule.get("end", bitlen - 1 if bitlen else 0)),
+                    "gate": bool(rule.get("gate", False)),
                 }
             )
             continue
 
         ranges = [_coerce_range(r) for r in (rule.get("ranges", []) or []) if isinstance(r, dict)]
         if ranges:
-            parity_cov.append({"type": typ, "ranges": ranges})
+            parity_cov.append({"type": typ, "ranges": ranges, "gate": bool(rule.get("gate", True))})
 
     return NormalizedFormat(
         name=name,
@@ -197,7 +198,7 @@ _SENTINEL_MAP = {
 }
 
 
-def _ansi_bcd5_digit_from_chunk(chunk5: str) -> Optional[str]:
+def _ansi_bcd5_digit_from_chunk(chunk5: str, parity_position: str = "msb") -> Optional[str]:
     """Decode a single 5-bit ANSI BCD chunk to a digit.
 
     Excel logic (as seen in the provided sheet) effectively:
@@ -216,7 +217,10 @@ def _ansi_bcd5_digit_from_chunk(chunk5: str) -> Optional[str]:
     if chunk5 in _SENTINEL_MAP:
         return None
 
-    data = chunk5[1:]          # d1 d2 d3 d4
+    if parity_position == "lsb":
+        data = chunk5[:-1]     # d1 d2 d3 d4 (parity on the right)
+    else:
+        data = chunk5[1:]      # d1 d2 d3 d4 (parity on the left)
     data_rev = data[::-1]      # d4 d3 d2 d1
     val = int(data_rev, 2)
     if 0 <= val <= 9:
@@ -224,7 +228,7 @@ def _ansi_bcd5_digit_from_chunk(chunk5: str) -> Optional[str]:
     return None
 
 
-def decode_ansi_bcd5_field(bits: str) -> Dict[str, object]:
+def decode_ansi_bcd5_field(bits: str, view: str | None = None) -> Dict[str, object]:
     """Decode a field that is made up of 5-bit ANSI BCD characters."""
     out: Dict[str, object] = {
         "display": "",
@@ -232,6 +236,8 @@ def decode_ansi_bcd5_field(bits: str) -> Dict[str, object]:
         "hex": "",
         "ok_digits": False,
     }
+
+    parity_position = "lsb" if view and "lsb" in view else "msb"
 
     if not bits or len(bits) % 5 != 0:
         # Not aligned, fall back to binary integer interpretation
@@ -247,7 +253,7 @@ def decode_ansi_bcd5_field(bits: str) -> Dict[str, object]:
     tokens: List[str] = []
 
     for ch in chunks:
-        d = _ansi_bcd5_digit_from_chunk(ch)
+        d = _ansi_bcd5_digit_from_chunk(ch, parity_position=parity_position)
         if d is not None:
             digits.append(d)
             tokens.append(d)
@@ -279,8 +285,8 @@ def extract_fields(binary_string: str, fmt: NormalizedFormat) -> Dict[str, Dict]
         bits = extract_bits(binary_string, start, end)
         view = (fmt.field_views.get(field_name) or "").lower().strip()
 
-        if view in ("ansi_bcd5", "ansi_bcd"):
-            decoded = decode_ansi_bcd5_field(bits)
+        if view in ("ansi_bcd5", "ansi_bcd") or view.startswith("ansi_bcd5"):
+            decoded = decode_ansi_bcd5_field(bits, view=view)
             value = int(decoded["int"])
             hexval = str(decoded["hex"])
             display = str(decoded["display"])
@@ -319,16 +325,54 @@ def parity_odd_bit_needed(bits: str) -> int:
     return 1 if bits.count("1") % 2 == 0 else 0
 
 
-def _build_parity_entry(binary_string: str, typ: str, start: int, end: int) -> Dict:
+def _collect_parity_bit_positions(fmt: NormalizedFormat) -> List[int]:
+    positions: List[int] = []
+    for fld in fmt.raw.get("fields", []) or []:
+        if not isinstance(fld, dict):
+            continue
+        if str(fld.get("role", "")).lower() != "parity":
+            continue
+        try:
+            s = int(fld.get("start", fld.get("end", 0)))
+            e = int(fld.get("end", s))
+        except (TypeError, ValueError):
+            continue
+        positions.extend([s, e])
+    return sorted(set(positions))
+
+
+def _guess_parity_bit_index(fmt: NormalizedFormat, start: int, end: int, total_bits: int) -> Optional[int]:
+    candidates = _collect_parity_bit_positions(fmt)
+    adjacent = {start - 1, end + 1}
+    for cand in candidates:
+        if cand in adjacent:
+            return cand
+    if candidates:
+        return min(candidates, key=lambda c: min(abs(c - start), abs(c - end)))
+    for cand in sorted(adjacent):
+        if 0 <= cand < total_bits:
+            return cand
+    return None
+
+
+def _build_parity_entry(
+    binary_string: str, typ: str, start: int, end: int, parity_bit_index: int | None, gate: bool = True
+) -> Dict:
     data_bits = extract_bits(binary_string, start, end)
     expected = parity_even_bit_needed(data_bits) if typ == "even" else parity_odd_bit_needed(data_bits)
+    actual: Optional[int] = None
+    if parity_bit_index is not None and 0 <= parity_bit_index < len(binary_string):
+        actual = int(binary_string[parity_bit_index])
+    ok: Optional[bool] = None if actual is None else actual == expected
     return {
         "label": "Even Parity" if typ == "even" else "Odd Parity",
         "type": typ,
         "coverage": (start, end),
         "expected": expected,
-        "actual": None,
-        "ok": None,
+        "actual": actual,
+        "ok": ok,
+        "parity_bit": parity_bit_index,
+        "gate": gate,
         "data_len": len(data_bits),
     }
 
@@ -340,6 +384,7 @@ def _build_per_character_parity_entries(
     end: int,
     character_width: int,
     parity_position: str,
+    gate: bool,
 ) -> List[Dict]:
     """Generate parity checks for each fixed-width character."""
     result: List[Dict] = []
@@ -383,6 +428,7 @@ def _build_per_character_parity_entries(
                 "expected": expected,
                 "actual": actual,
                 "ok": ok,
+                "gate": gate,
                 "data_len": len(data_bits),
             }
         )
@@ -405,6 +451,7 @@ def verify_parity(binary_string: str, fmt: NormalizedFormat) -> List[Dict]:
             parity_position = str(rule.get("parity_position", "msb")).lower()
             start = int(rule.get("start", 0))
             end = int(rule.get("end", len(binary_string) - 1))
+            gate = bool(rule.get("gate", True))
             result.extend(
                 _build_per_character_parity_entries(
                     binary_string=binary_string,
@@ -413,6 +460,7 @@ def verify_parity(binary_string: str, fmt: NormalizedFormat) -> List[Dict]:
                     end=end,
                     character_width=character_width,
                     parity_position=parity_position,
+                    gate=gate,
                 )
             )
             continue
@@ -422,7 +470,8 @@ def verify_parity(binary_string: str, fmt: NormalizedFormat) -> List[Dict]:
             if not parsed:
                 continue
             start, end = parsed
-            result.append(_build_parity_entry(binary_string, typ, start, end))
+            parity_bit_index = _guess_parity_bit_index(fmt, start, end, len(binary_string))
+            result.append(_build_parity_entry(binary_string, typ, start, end, parity_bit_index, gate=bool(rule.get("gate", True))))
 
     return result
 
