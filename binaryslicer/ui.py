@@ -23,7 +23,7 @@ from .formats import (
     verify_parity,
 )
 from .paths import application_dir, ensure_user_config_dir, user_config_dir
-from .theme import load_theme_document, save_theme_document
+from .theme import available_themes, load_theme_document, resolve_theme, save_theme_document
 
 BIT_RE = re.compile(r"^[01]+$")
 
@@ -39,10 +39,11 @@ class App:
 
         # Theme
         self.theme_doc = load_theme_document()
-        self.theme_mode = self.theme_doc.get("last_mode", "light")
-        self.theme = self.theme_doc.get(self.theme_mode, self.theme_doc.get("light", {}))
+        self.theme_mode = self.theme_doc.get("last_mode", "light_jci")
+        if self.theme_mode not in available_themes():
+            self.theme_mode = "light_jci"
+        self.theme = resolve_theme(self.theme_mode, self.theme_doc)
         self._init_styles()
-        self._apply_theme()
 
         # Formats
         self.format_repo = FormatRepository()
@@ -50,87 +51,132 @@ class App:
         self.formats = self.format_repo.formats
 
         # Layout
-        container = ttk.Frame(root, padding=10)
+        container = ttk.Frame(root, padding=12, style="Panel.TFrame")
         container.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
-
-        ttk.Label(container, text="Enter Hex or Binary:").grid(row=0, column=0, sticky=tk.W)
-        self.input_entry = ttk.Entry(container, width=64)
-        self.input_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
+        container.columnconfigure(0, weight=1)
         container.columnconfigure(1, weight=1)
+        container.columnconfigure(2, weight=1)
+        container.rowconfigure(3, weight=1)
 
-        self.btn_calc = ttk.Button(container, text="Calculate", command=self.on_calculate)
-        self.btn_calc.grid(row=0, column=2, padx=6)
-        self.btn_copy = ttk.Button(container, text="Copy Results", command=self.copy_results)
-        self.btn_copy.grid(row=0, column=3, padx=6)
-        self.btn_export = ttk.Button(container, text="Export CSV", command=self.export_csv)
-        self.btn_export.grid(row=0, column=4, padx=6)
+        self.header = ttk.Label(container, text="BinarySlicer · JCI Edition", style="Header.TLabel")
+        self.header.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 8))
 
+        toolbar = ttk.Frame(container, padding=(12, 10), style="Panel.TFrame")
+        toolbar.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E))
+        toolbar.columnconfigure(1, weight=1)
+
+        ttk.Label(toolbar, text="Input", style="Muted.TLabel").grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
+        self.input_entry = ttk.Entry(toolbar, width=64)
+        self.input_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
+
+        self.btn_calc = ttk.Button(toolbar, text="Calculate", style="Primary.TButton", command=self.on_calculate)
+        self.btn_calc.grid(row=0, column=2, padx=8)
+
+        action_frame = ttk.Frame(toolbar, style="Panel.TFrame")
+        action_frame.grid(row=0, column=3, padx=4, sticky=tk.E)
+        ttk.Button(action_frame, text="Copy", style="Secondary.TButton", command=self.copy_results).pack(side=tk.LEFT, padx=2)
+        ttk.Button(action_frame, text="Export CSV", style="Secondary.TButton", command=self.export_csv).pack(side=tk.LEFT, padx=2)
+        self.btn_theme = ttk.Button(
+            action_frame, text="Toggle Theme", style="Secondary.TButton", command=self.toggle_theme
+        )
+        self.btn_theme.pack(side=tk.LEFT, padx=(6, 0))
+
+        options = ttk.Frame(container, padding=(12, 6), style="Panel.TFrame")
+        options.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(8, 4))
+        options.columnconfigure(4, weight=1)
+
+        ttk.Label(options, text="Options", style="Muted.TLabel").grid(row=0, column=0, sticky=tk.W)
         self.show_fails = tk.BooleanVar(value=False)
-        ttk.Checkbutton(container, text="Show parity failures (diagnostic)", variable=self.show_fails).grid(
-            row=0, column=5, padx=6
-        )
+        ttk.Checkbutton(
+            options, text="Show parity failures (diagnostic)", variable=self.show_fails, style="TCheckbutton"
+        ).grid(row=0, column=1, padx=(12, 8), sticky=tk.W)
 
-        ttk.Label(container, text="Compatible slicing:").grid(row=0, column=6, padx=(12, 2))
+        ttk.Label(options, text="Compatible slicing:", style="Muted.TLabel").grid(row=0, column=2, padx=(8, 4))
         self.slice_mode = tk.StringVar(value="auto")
-        ttk.Radiobutton(container, text="Auto", value="auto", variable=self.slice_mode).grid(
-            row=0, column=7, padx=2
-        )
-        ttk.Radiobutton(container, text="Leftmost", value="left", variable=self.slice_mode).grid(
-            row=0, column=8, padx=2
-        )
-        ttk.Radiobutton(container, text="Rightmost", value="right", variable=self.slice_mode).grid(
-            row=0, column=9, padx=2
-        )
+        ttk.Radiobutton(options, text="Auto", value="auto", variable=self.slice_mode).grid(row=0, column=3, padx=2)
+        ttk.Radiobutton(options, text="Leftmost", value="left", variable=self.slice_mode).grid(row=0, column=4, padx=2)
+        ttk.Radiobutton(options, text="Rightmost", value="right", variable=self.slice_mode).grid(row=0, column=5, padx=2)
 
-        self.btn_theme = ttk.Button(container, text="Toggle Theme", command=self.toggle_theme)
-        self.btn_theme.grid(row=0, column=10, padx=6)
+        main = ttk.Frame(container, padding=(0, 8), style="Panel.TFrame")
+        main.grid(row=3, column=0, columnspan=3, sticky=(tk.N, tk.S, tk.E, tk.W))
+        main.columnconfigure(0, weight=2)
+        main.columnconfigure(1, weight=3)
+        main.rowconfigure(0, weight=1)
 
-        # Notebook
-        self.nb = ttk.Notebook(container)
-        self.nb.grid(row=1, column=0, columnspan=11, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(8, 0))
-        container.rowconfigure(1, weight=1)
+        self.summary_frame = ttk.Frame(main, padding=12, style="Panel.TFrame")
+        self.summary_frame.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W), padx=(0, 6))
+        self.summary_frame.rowconfigure(1, weight=1)
+        ttk.Label(self.summary_frame, text="Summary", style="Header.TLabel").grid(row=0, column=0, sticky=tk.W, pady=(0, 6))
+        summary_body = ttk.Frame(self.summary_frame, style="Panel.TFrame")
+        summary_body.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        summary_body.rowconfigure(0, weight=1)
+        summary_body.columnconfigure(0, weight=1)
+        self.summary_text = tk.Text(summary_body, wrap=tk.WORD, height=24, relief=tk.FLAT, borderwidth=6)
+        self.summary_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        summary_scroll = ttk.Scrollbar(summary_body, orient=tk.VERTICAL, command=self.summary_text.yview)
+        summary_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.summary_text.configure(yscrollcommand=summary_scroll.set)
 
-        self.tab_summary = ttk.Frame(self.nb)
-        self.tab_table = ttk.Frame(self.nb)
-        self.tab_visual = ttk.Frame(self.nb)
-        self.nb.add(self.tab_summary, text="Summary")
+        notebook_container = ttk.Frame(main, padding=12, style="Panel.TFrame")
+        notebook_container.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.E, tk.W), padx=(6, 0))
+        notebook_container.rowconfigure(0, weight=1)
+        notebook_container.columnconfigure(0, weight=1)
+
+        self.nb = ttk.Notebook(notebook_container)
+        self.nb.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+
+        self.tab_table = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
+        self.tab_visual = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
+        self.tab_details = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
         self.nb.add(self.tab_table, text="Table")
         self.nb.add(self.tab_visual, text="Parity Visualizer")
-
-        # Summary text
-        self.txt = tk.Text(self.tab_summary, width=100, height=26)
-        self.txt.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        self.tab_summary.rowconfigure(0, weight=1)
-        self.tab_summary.columnconfigure(0, weight=1)
+        self.nb.add(self.tab_details, text="Details")
 
         # Table view
-        cols = ("Field", "Bits", "Int", "Hex")
-        self.tree = ttk.Treeview(self.tab_table, columns=cols, show="headings")
+        cols = ("Field", "Range", "Value", "Hex")
+        self.tree = ttk.Treeview(self.tab_table, columns=cols, show="headings", style="Results.Treeview")
         for col in cols:
+            anchor = tk.W
+            width = 130 if col != "Field" else 200
             self.tree.heading(col, text=col)
-            self.tree.column(col, stretch=True, anchor=tk.W, width=120)
+            self.tree.column(col, stretch=True, anchor=anchor, width=width)
         self.tree.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         self.tab_table.rowconfigure(0, weight=1)
         self.tab_table.columnconfigure(0, weight=1)
         self.copy_table_btn = ttk.Button(
-            self.tab_table, text="Copy Selected", command=self.copy_selected_table
+            self.tab_table, text="Copy Selected", style="Secondary.TButton", command=self.copy_selected_table
         )
         self.copy_table_btn.grid(row=1, column=0, sticky=tk.W, pady=6)
 
         # Visualizer canvas
-        self.canvas = tk.Canvas(self.tab_visual, height=60)
-        self.canvas.grid(row=0, column=0, sticky=(tk.E, tk.W), padx=4, pady=8)
+        self.canvas = tk.Canvas(self.tab_visual, height=90, highlightthickness=0)
+        self.canvas.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         self.tab_visual.columnconfigure(0, weight=1)
+        self.tab_visual.rowconfigure(0, weight=1)
+
+        # Details tab text
+        details_body = ttk.Frame(self.tab_details, style="Panel.TFrame")
+        details_body.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        details_body.columnconfigure(0, weight=1)
+        details_body.rowconfigure(0, weight=1)
+        self.details_text = tk.Text(details_body, wrap=tk.WORD, height=24, relief=tk.FLAT, borderwidth=6)
+        self.details_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        details_scroll = ttk.Scrollbar(details_body, orient=tk.VERTICAL, command=self.details_text.yview)
+        details_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.details_text.configure(yscrollcommand=details_scroll.set)
+        self.tab_details.rowconfigure(0, weight=1)
+        self.tab_details.columnconfigure(0, weight=1)
 
         # Status
         cfg_dir = user_config_dir()
         self.status = ttk.Label(
             container,
             text=f"Formats loaded: {len(self.formats)} | Config: {cfg_dir}",
+            style="Muted.TLabel",
         )
-        self.status.grid(row=2, column=0, columnspan=11, sticky=(tk.W, tk.E), pady=(8, 0))
+        self.status.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(8, 0))
         if self.format_repo.last_errors:
             self.status.configure(text=f"Loaded with warnings: {self.format_repo.last_errors[0]}")
 
@@ -155,7 +201,7 @@ class App:
         self.last_binary_used = ""
         self.last_format_checks: list[dict] = []
 
-        self._apply_theme_classic_widgets()
+        self._apply_theme()
 
     # ---------------- Theme helpers ----------------
     def _init_styles(self) -> None:
@@ -167,46 +213,165 @@ class App:
 
     def _apply_theme(self) -> None:
         theme = self.theme
-        self.style.configure(".", font=("Consolas", 10))
+        panel = theme.get("panel", theme.get("bg"))
+        panel2 = theme.get("panel2", panel)
+        accent = theme.get("accent", "#0399CC")
+        accent2 = theme.get("accent2", accent)
+        border = theme.get("border", "#d9dce5")
+        text = theme.get("text", "#1d2230")
+        muted = theme.get("muted", text)
+        on_accent = self._contrast_color(accent)
+        on_select = self._contrast_color(theme.get("select", accent))
+
+        base_font = ("Segoe UI", 10)
+        mono_font = ("Consolas", 10)
+
+        self.style.configure(".", background=theme.get("bg", "#f2f2f2"), foreground=text, font=base_font)
         self.root.configure(bg=theme.get("bg", "#f2f2f2"))
+
         self.style.configure("TFrame", background=theme.get("bg"))
-        self.style.configure("TLabelframe", background=theme.get("bg"))
-        self.style.configure("TLabelframe.Label", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TLabel", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TCheckbutton", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TRadiobutton", background=theme.get("bg"), foreground=theme.get("text", "#333740"))
-        self.style.configure("TNotebook", background=theme.get("bg"))
+        self.style.configure("Panel.TFrame", background=panel)
+        self.style.configure("TLabelframe", background=panel)
+        self.style.configure("TLabelframe.Label", background=panel, foreground=text, font=base_font)
+        self.style.configure("TLabel", background=theme.get("bg"), foreground=text, font=base_font)
+        self.style.configure("Header.TLabel", background=panel, foreground=text, font=("Segoe UI Semibold", 11))
+        self.style.configure("Muted.TLabel", background=panel, foreground=muted, font=base_font)
+        self.style.configure("TCheckbutton", background=panel, foreground=text, font=base_font)
+        self.style.configure("TRadiobutton", background=panel, foreground=text, font=base_font)
+
+        self.style.configure("TNotebook", background=panel, tabmargins=(4, 2, 4, 0))
         self.style.configure(
             "TNotebook.Tab",
-            background=theme.get("panel", theme.get("bg")),
-            foreground=theme.get("text", "#333740"),
+            background=panel2,
+            foreground=text,
+            padding=(10, 6),
+            font=base_font,
         )
         self.style.map(
             "TNotebook.Tab",
-            background=[("selected", theme.get("panel", theme.get("bg")))],
-            foreground=[("selected", theme.get("text", "#333740"))],
+            background=[("selected", accent)],
+            foreground=[("selected", on_accent)],
         )
-        panel = theme.get("panel", theme.get("bg"))
-        self.style.configure("Treeview", background=panel, fieldbackground=panel, foreground=theme.get("text", "#333740"))
-        self.style.configure("Treeview.Heading", background=panel, foreground=theme.get("text", "#333740"))
 
-    def _apply_theme_classic_widgets(self) -> None:
-        theme = self.theme
-        classic_widgets = [self.root, self.txt, self.canvas]
-        for widget in classic_widgets:
-            try:
-                widget.configure(bg=theme.get("bg", "#f2f2f2"), fg=theme.get("text", "#333740"))
-            except tk.TclError:
-                widget.configure(bg=theme.get("bg", "#f2f2f2"))
+        self.style.configure(
+            "Primary.TButton",
+            background=accent,
+            foreground=on_accent,
+            bordercolor=accent,
+            focusthickness=0,
+            padding=(12, 8),
+            font=("Segoe UI Semibold", 10),
+        )
+        self.style.map(
+            "Primary.TButton",
+            background=[("active", accent2), ("pressed", theme.get("select", accent2))],
+            foreground=[("disabled", muted)],
+        )
+        self.style.configure(
+            "Secondary.TButton",
+            background=panel2,
+            foreground=text,
+            bordercolor=panel2,
+            focusthickness=0,
+            padding=(10, 8),
+            font=("Segoe UI", 10),
+        )
+        self.style.map(
+            "Secondary.TButton",
+            background=[("active", theme.get("select", accent)), ("pressed", accent2)],
+            foreground=[("disabled", muted)],
+        )
+
+        self.style.configure(
+            "Results.Treeview",
+            background=panel,
+            fieldbackground=panel,
+            foreground=text,
+            bordercolor=border,
+            borderwidth=1,
+            font=base_font,
+            rowheight=28,
+        )
+        self.style.configure(
+            "Results.Treeview.Heading",
+            background=panel2,
+            foreground=text,
+            font=("Segoe UI Semibold", 10),
+            relief=tk.FLAT,
+        )
+        self.style.map(
+            "Results.Treeview",
+            background=[("selected", theme.get("select", accent))],
+            foreground=[("selected", on_select)],
+        )
+
+        self._apply_text_theme(self.summary_text, panel, text, border, mono_font)
+        self._apply_text_theme(self.details_text, panel, text, border, mono_font)
+        self.canvas.configure(bg=panel2, highlightbackground=border)
+        self._apply_treeview_tags()
+
+    def _apply_text_theme(self, widget: tk.Text, bg: str, fg: str, border: str, font: tuple[str, int]) -> None:
+        widget.configure(
+            bg=bg,
+            fg=fg,
+            insertbackground=fg,
+            highlightbackground=border,
+            highlightcolor=border,
+            font=font,
+        )
+
+    def _apply_treeview_tags(self) -> None:
+        panel = self.theme.get("panel", "#ffffff")
+        alt = self._mix(panel, self.theme.get("bg", "#f5f6fb"), 0.08)
+        self.tree.tag_configure("even", background=panel)
+        self.tree.tag_configure("odd", background=alt)
+        self.tree.tag_configure("value_mono", font=("Consolas", 10))
+
+    @staticmethod
+    def _mix(color: str, other: str, ratio: float) -> str:
+        def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+            value = value.lstrip("#")
+            return tuple(int(value[i : i + 2], 16) for i in range(0, 6, 2))
+
+        def _clamp(channel: float) -> int:
+            return max(0, min(255, int(channel)))
+
+        r1, g1, b1 = _hex_to_rgb(color)
+        r2, g2, b2 = _hex_to_rgb(other)
+        r = _clamp(r1 * (1 - ratio) + r2 * ratio)
+        g = _clamp(g1 * (1 - ratio) + g2 * ratio)
+        b = _clamp(b1 * (1 - ratio) + b2 * ratio)
+        return f"#{r:02x}{g:02x}{b:02x}"
+
+    def _contrast_color(self, color: str) -> str:
+        color = color.lstrip("#")
+        r, g, b = (int(color[i : i + 2], 16) for i in (0, 2, 4))
+        luma = 0.299 * r + 0.587 * g + 0.114 * b
+        return "#000000" if luma > 186 else "#ffffff"
+
+    def _clear_text_views(self) -> None:
+        for widget in (self.summary_text, self.details_text):
+            widget.configure(state=tk.NORMAL)
+            widget.delete("1.0", tk.END)
+
+    def _append_text(self, text: str) -> None:
+        for widget in (self.summary_text, self.details_text):
+            widget.insert(tk.END, text)
+
+    def _finalize_text_views(self) -> None:
+        for widget in (self.summary_text, self.details_text):
+            widget.configure(state=tk.DISABLED)
 
     def toggle_theme(self) -> None:
-        self.theme_mode = "dark" if self.theme_mode == "light" else "light"
-        self.theme = self.theme_doc.get(self.theme_mode, self.theme_doc.get("light", {}))
+        modes = list(available_themes())
+        next_idx = (modes.index(self.theme_mode) + 1) % len(modes)
+        self.theme_mode = modes[next_idx]
+        self.theme = resolve_theme(self.theme_mode, self.theme_doc)
         self._apply_theme()
-        self._apply_theme_classic_widgets()
         self.theme_doc["last_mode"] = self.theme_mode
         save_theme_document(self.theme_doc)
         self.status.configure(text=f"Theme set to {self.theme_mode} mode")
+        self._draw_parity_visualizer()
 
     # ---------------- Menu ----------------
     def _build_menu(self) -> None:
@@ -737,15 +902,13 @@ class App:
             messagebox.showerror("Error", error)
             return
         self.last_binary_used = binary_string
-        self.txt.delete("1.0", tk.END)
-        self.txt.insert(
-            tk.END,
-            f"Binary ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n",
-        )
+        self._clear_text_views()
+        self._append_text(f"Binary ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
 
         exact, compatible = self._detect_formats(binary_string)
         if not exact and not compatible:
-            self.txt.insert(tk.END, "No matching formats found.\n")
+            self._append_text("No matching formats found.\n")
+            self._finalize_text_views()
             return
 
         self.last_rows_for_csv = []
@@ -754,12 +917,12 @@ class App:
 
         rendered_any = False
         if exact:
-            self.txt.insert(tk.END, "== Exact bit-length matches ==\n")
+            self._append_text("== Exact bit-length matches ==\n")
             rendered_any |= self._render_candidates(binary_string, exact, slice_mode=None)
 
         if compatible:
-            self.txt.insert(tk.END, "== Compatible (input longer than known format) ==\n")
-            self.txt.insert(tk.END, "These may indicate framing/padding.\n\n")
+            self._append_text("== Compatible (input longer than known format) ==\n")
+            self._append_text("These may indicate framing/padding.\n\n")
             rendered_any |= self._render_candidates(
                 binary_string,
                 compatible,
@@ -767,12 +930,13 @@ class App:
             )
 
         if not rendered_any:
-            self.txt.insert(
-                tk.END,
-                "No formats passed parity in strict mode.\nTip: Enable 'Show parity failures (diagnostic)' to inspect candidates.\n",
+            self._append_text(
+                "No formats passed parity in strict mode.\n"
+                "Tip: Enable 'Show parity failures (diagnostic)' to inspect candidates.\n"
             )
 
         self._draw_parity_visualizer()
+        self._finalize_text_views()
 
     def _detect_formats(self, binary_string: str):
         exact = []
@@ -829,17 +993,19 @@ class App:
         return rendered
 
     def _render_format(self, binary_string: str, name: str, fmt: NormalizedFormat) -> None:
-        self.txt.insert(tk.END, f"Format: {name}\n")
+        self._append_text(f"Format: {name}\n")
         fields = extract_fields(binary_string, fmt)
         for field, meta in fields.items():
             if meta.get("hidden"):
                 continue
-            self.txt.insert(
-                tk.END,
-                f"  {field:14}: {meta['int']} (hex {meta['hex']}), bits[{meta['len']}]={meta['bits']}\n",
+            self._append_text(
+                f"  {field:14}: {meta['int']} (hex {meta['hex']}), bits[{meta['len']}]={meta['bits']}\n"
             )
             start, end = meta["range"]
-            self.tree.insert("", tk.END, values=(field, f"{start}–{end}", meta["int"], meta["hex"]))
+            idx = len(self.tree.get_children(""))
+            tags = ("even",) if idx % 2 == 0 else ("odd",)
+            tags += ("value_mono",)
+            self.tree.insert("", tk.END, values=(field, f"{start}–{end}", meta["int"], meta["hex"]), tags=tags)
             self.last_rows_for_csv.append(
                 {
                     "Format": name,
@@ -861,13 +1027,12 @@ class App:
                     status = "(no parity bit)"
                 note = " (advisory)" if not result.get("gate", True) else ""
                 parity_loc = f"; parity_bit={result.get('parity_bit')}" if result.get("parity_bit") is not None else ""
-                self.txt.insert(
-                    tk.END,
+                self._append_text(
                     f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status}{note} "
-                    f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']}{parity_loc})\n",
+                    f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']}{parity_loc})\n"
                 )
             self.last_format_checks = parity
-        self.txt.insert(tk.END, "\n")
+        self._append_text("\n")
 
     def _parity_all_ok(self, binary_string: str, fmt: NormalizedFormat) -> bool:
         parity = verify_parity(binary_string, fmt)
@@ -888,10 +1053,12 @@ class App:
         total = len(self.last_binary_used)
         mid = height // 2
         theme = self.theme
-        base_color = theme.get("primary", "#4b6cff")
-        even_color = theme.get("accent", "#00adff")
-        odd_color = theme.get("success", "#75e600")
-        fail_color = theme.get("error", "#ff4d4f")
+        base_color = theme.get("border", "#8f95a3")
+        even_color = theme.get("select", theme.get("accent", "#0399CC"))
+        odd_color = theme.get("accent2", "#00B8E0")
+        ok_color = theme.get("ok", "#29B582")
+        warn_color = theme.get("warn", "#7DBA00")
+        fail_color = theme.get("error", "#C43E44")
         marker_color = theme.get("text", "#333740")
 
         self.canvas.create_line(10, mid, width - 10, mid, fill=base_color, width=4)
@@ -900,16 +1067,20 @@ class App:
             x1 = 10 + (width - 20) * (start / total)
             x2 = 10 + (width - 20) * (end / total)
             color = even_color if result["type"] == "even" else odd_color
-            self.canvas.create_rectangle(x1, mid - 10, x2, mid + 10, fill=color, outline="")
-            if result["ok"] is False:
-                self.canvas.create_rectangle(x1, mid - 10, x2, mid + 10, fill=fail_color, outline="", stipple="gray25")
+            fill_color = ok_color if result.get("ok") else fail_color if result.get("ok") is False else warn_color
+            blended = self._mix(color, fill_color, 0.35)
+            self.canvas.create_rectangle(x1, mid - 10, x2, mid + 10, fill=blended, outline="")
             if result.get("parity_bit") is not None:
                 px = 10 + (width - 20) * (result["parity_bit"] / total)
                 self.canvas.create_line(px, mid - 14, px, mid + 14, fill=marker_color, width=2)
 
     # ---------------- Copy / Export ----------------
     def copy_results(self) -> None:
-        text = self.txt.get("1.0", tk.END)
+        prev_state = self.details_text.cget("state")
+        self.details_text.configure(state=tk.NORMAL)
+        text = self.details_text.get("1.0", tk.END)
+        if prev_state != tk.NORMAL:
+            self.details_text.configure(state=prev_state)
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
         self.status.configure(text="Results copied to clipboard.")
