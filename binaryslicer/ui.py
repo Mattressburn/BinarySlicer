@@ -9,7 +9,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
+
+import ttkbootstrap as tb
+from ttkbootstrap import ttk
 
 from .decoder import format_binary_groups, process_input
 from .formats import (
@@ -23,7 +26,13 @@ from .formats import (
     verify_parity,
 )
 from .paths import application_dir, ensure_user_config_dir, user_config_dir
-from .theme import available_themes, load_theme_document, resolve_theme, save_theme_document
+from .theme import (
+    apply_bootstrap_theme,
+    available_themes,
+    load_theme_document,
+    resolve_theme,
+    save_theme_document,
+)
 
 BIT_RE = re.compile(r"^[01]+$")
 
@@ -31,7 +40,7 @@ BIT_RE = re.compile(r"^[01]+$")
 class App:
     """Main BinarySlicer application."""
 
-    def __init__(self, root: tk.Tk) -> None:
+    def __init__(self, root: tb.Window) -> None:
         self.root = root
         self.root.title("BinarySlicer – JCI Edition")
 
@@ -71,15 +80,15 @@ class App:
         self.input_entry = ttk.Entry(toolbar, width=64)
         self.input_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
 
-        self.btn_calc = ttk.Button(toolbar, text="Calculate", style="Primary.TButton", command=self.on_calculate)
+        self.btn_calc = ttk.Button(toolbar, text="Calculate", bootstyle="primary", command=self.on_calculate)
         self.btn_calc.grid(row=0, column=2, padx=8)
 
         action_frame = ttk.Frame(toolbar, style="Panel.TFrame")
         action_frame.grid(row=0, column=3, padx=4, sticky=tk.E)
-        ttk.Button(action_frame, text="Copy", style="Secondary.TButton", command=self.copy_results).pack(side=tk.LEFT, padx=2)
-        ttk.Button(action_frame, text="Export CSV", style="Secondary.TButton", command=self.export_csv).pack(side=tk.LEFT, padx=2)
+        ttk.Button(action_frame, text="Copy", bootstyle="secondary", command=self.copy_results).pack(side=tk.LEFT, padx=2)
+        ttk.Button(action_frame, text="Export CSV", bootstyle="secondary", command=self.export_csv).pack(side=tk.LEFT, padx=2)
         self.btn_theme = ttk.Button(
-            action_frame, text="Toggle Theme", style="Secondary.TButton", command=self.toggle_theme
+            action_frame, text="Toggle Theme", bootstyle="secondary", command=self.toggle_theme
         )
         self.btn_theme.pack(side=tk.LEFT, padx=(6, 0))
 
@@ -146,7 +155,7 @@ class App:
         self.tab_table.rowconfigure(0, weight=1)
         self.tab_table.columnconfigure(0, weight=1)
         self.copy_table_btn = ttk.Button(
-            self.tab_table, text="Copy Selected", style="Secondary.TButton", command=self.copy_selected_table
+            self.tab_table, text="Copy Selected", bootstyle="secondary", command=self.copy_selected_table
         )
         self.copy_table_btn.grid(row=1, column=0, sticky=tk.W, pady=6)
 
@@ -205,14 +214,17 @@ class App:
 
     # ---------------- Theme helpers ----------------
     def _init_styles(self) -> None:
-        self.style = ttk.Style(self.root)
-        try:
-            self.style.theme_use("clam")
-        except tk.TclError:
-            pass
+        self.style = getattr(self.root, "style", tb.Style(master=self.root))
 
     def _apply_theme(self) -> None:
         theme = self.theme
+        apply_bootstrap_theme(self.style, self.theme_mode, theme)
+        try:
+            self.style.theme_use(self.theme_mode)
+        except tk.TclError:
+            # Safety fallback so the UI still renders even if a theme is missing.
+            self.style.theme_use("clam")
+
         panel = theme.get("panel", theme.get("bg"))
         panel2 = theme.get("panel2", panel)
         accent = theme.get("accent", "#0399CC")
@@ -220,103 +232,63 @@ class App:
         border = theme.get("border", "#d9dce5")
         text = theme.get("text", "#1d2230")
         muted = theme.get("muted", text)
+        select = theme.get("select", accent)
+        info = theme.get("info", accent2)
         on_accent = self._contrast_color(accent)
-        on_select = self._contrast_color(theme.get("select", accent))
-
+        on_select = self._contrast_color(select)
         base_font = ("Segoe UI", 10)
         mono_font = ("Consolas", 10)
 
         self.style.configure(".", background=theme.get("bg", "#f2f2f2"), foreground=text, font=base_font)
         self.root.configure(bg=theme.get("bg", "#f2f2f2"))
-
-        self.style.configure("TFrame", background=theme.get("bg"))
-        self.style.configure("Panel.TFrame", background=panel)
-        self.style.configure("TLabelframe", background=panel)
-        self.style.configure("TLabelframe.Label", background=panel, foreground=text, font=base_font)
-        self.style.configure("TLabel", background=theme.get("bg"), foreground=text, font=base_font)
-        self.style.configure("Header.TLabel", background=panel, foreground=text, font=("Segoe UI Semibold", 11))
-        self.style.configure("Muted.TLabel", background=panel, foreground=muted, font=base_font)
-        self.style.configure("TCheckbutton", background=panel, foreground=text, font=base_font)
-        self.style.configure("TRadiobutton", background=panel, foreground=text, font=base_font)
-
-        self.style.configure("TNotebook", background=panel, tabmargins=(4, 2, 4, 0))
-        self.style.configure(
-            "TNotebook.Tab",
-            background=panel2,
-            foreground=text,
-            padding=(10, 6),
-            font=base_font,
-        )
-        self.style.map(
-            "TNotebook.Tab",
-            background=[("selected", accent)],
-            foreground=[("selected", on_accent)],
-        )
-
-        self.style.configure(
-            "Primary.TButton",
-            background=accent,
-            foreground=on_accent,
-            bordercolor=accent,
-            focusthickness=0,
-            padding=(12, 8),
-            font=("Segoe UI Semibold", 10),
-        )
-        self.style.map(
-            "Primary.TButton",
-            background=[("active", accent2), ("pressed", theme.get("select", accent2))],
-            foreground=[("disabled", muted)],
-        )
-        self.style.configure(
-            "Secondary.TButton",
-            background=panel2,
-            foreground=text,
-            bordercolor=panel2,
-            focusthickness=0,
-            padding=(10, 8),
-            font=("Segoe UI", 10),
-        )
-        self.style.map(
-            "Secondary.TButton",
-            background=[("active", theme.get("select", accent)), ("pressed", accent2)],
-            foreground=[("disabled", muted)],
-        )
-
-        self.style.configure(
-            "Results.Treeview",
-            background=panel,
-            fieldbackground=panel,
-            foreground=text,
-            bordercolor=border,
-            borderwidth=1,
-            font=base_font,
-            rowheight=28,
-        )
-        self.style.configure(
-            "Results.Treeview.Heading",
-            background=panel2,
-            foreground=text,
-            font=("Segoe UI Semibold", 10),
-            relief=tk.FLAT,
-        )
+        self.style.configure("TLabel", font=base_font)
+        self.style.configure("Muted.TLabel", font=base_font)
+        self.style.configure("TCheckbutton", font=base_font)
+        self.style.configure("TRadiobutton", font=base_font)
+        self.style.configure("TNotebook.Tab", font=base_font)
+        self.style.configure("Results.Treeview", font=base_font)
+        self.style.configure("Results.Treeview.Heading", font=("Segoe UI Semibold", 10))
         self.style.map(
             "Results.Treeview",
-            background=[("selected", theme.get("select", accent))],
+            background=[("selected", select)],
             foreground=[("selected", on_select)],
+            bordercolor=[("focus", info)],
         )
 
-        self._apply_text_theme(self.summary_text, panel, text, border, mono_font)
-        self._apply_text_theme(self.details_text, panel, text, border, mono_font)
-        self.canvas.configure(bg=panel2, highlightbackground=border)
+        select_opts = {"selectbackground": select, "selectforeground": on_select}
+        self.input_entry.configure(
+            foreground=text,
+            insertbackground=text,
+            **select_opts,
+        )
+        self.root.option_add("*TEntry*selectBackground", select)
+        self.root.option_add("*TEntry*selectForeground", on_select)
+        self.root.option_add("*TEntry*insertColor", text)
+        self.root.option_add("*TEntry*foreground", text)
+
+        self._apply_text_theme(self.summary_text, panel, text, border, mono_font, select, on_select)
+        self._apply_text_theme(self.details_text, panel, text, border, mono_font, select, on_select)
+        self.canvas.configure(bg=panel2, highlightbackground=border, highlightcolor=info)
         self._apply_treeview_tags()
 
-    def _apply_text_theme(self, widget: tk.Text, bg: str, fg: str, border: str, font: tuple[str, int]) -> None:
+    def _apply_text_theme(
+        self,
+        widget: tk.Text,
+        bg: str,
+        fg: str,
+        border: str,
+        font: tuple[str, int],
+        select_bg: str,
+        select_fg: str,
+    ) -> None:
         widget.configure(
             bg=bg,
             fg=fg,
             insertbackground=fg,
             highlightbackground=border,
             highlightcolor=border,
+            selectbackground=select_bg,
+            selectforeground=select_fg,
             font=font,
         )
 
@@ -462,20 +434,21 @@ class App:
         for fmt in self.formats_doc.get("formats", []):
             tree.insert("", tk.END, values=(fmt.get("name"), fmt.get("bit_length")))
 
-        btn_add = ttk.Button(frame, text="Add", command=lambda: self._edit_format(win, None, tree))
+        btn_add = ttk.Button(frame, text="Add", bootstyle="secondary", command=lambda: self._edit_format(win, None, tree))
         btn_add.grid(row=1, column=0, sticky=tk.W, pady=6)
 
         btn_edit = ttk.Button(
             frame,
             text="Edit",
+            bootstyle="secondary",
             command=lambda: self._edit_format(win, self._selected_format(tree), tree),
         )
         btn_edit.grid(row=1, column=1, sticky=tk.W, pady=6)
 
-        btn_clone = ttk.Button(frame, text="Clone", command=lambda: self._clone_selected_format(tree))
+        btn_clone = ttk.Button(frame, text="Clone", bootstyle="secondary", command=lambda: self._clone_selected_format(tree))
         btn_clone.grid(row=1, column=2, sticky=tk.W, pady=6)
 
-        btn_delete = ttk.Button(frame, text="Delete", command=lambda: self._delete_selected_format(tree))
+        btn_delete = ttk.Button(frame, text="Delete", bootstyle="secondary", command=lambda: self._delete_selected_format(tree))
         btn_delete.grid(row=1, column=3, sticky=tk.W, pady=6)
 
         frame.columnconfigure(0, weight=1)
@@ -554,9 +527,9 @@ class App:
             fields_tree.column(column, anchor=tk.W, width=width)
         fields_tree.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E))
         fields_tree._payloads = {}  # type: ignore[attr-defined]
-        ttk.Button(fields_frame, text="Add Field", command=lambda: self._add_field_row(fields_tree)).grid(row=1, column=0, pady=4)
-        ttk.Button(fields_frame, text="Edit Field", command=lambda: self._edit_field_row(fields_tree)).grid(row=1, column=1, pady=4)
-        ttk.Button(fields_frame, text="Delete Field", command=lambda: self._del_field_row(fields_tree)).grid(row=1, column=2, pady=4)
+        ttk.Button(fields_frame, text="Add Field", bootstyle="secondary", command=lambda: self._add_field_row(fields_tree)).grid(row=1, column=0, pady=4)
+        ttk.Button(fields_frame, text="Edit Field", bootstyle="secondary", command=lambda: self._edit_field_row(fields_tree)).grid(row=1, column=1, pady=4)
+        ttk.Button(fields_frame, text="Delete Field", bootstyle="secondary", command=lambda: self._del_field_row(fields_tree)).grid(row=1, column=2, pady=4)
 
         parity_frame = ttk.Labelframe(body, text="Parity rules")
         parity_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E))
@@ -565,9 +538,9 @@ class App:
             parity_tree.heading(column, text=column)
             parity_tree.column(column, anchor=tk.W, width=120)
         parity_tree.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E))
-        ttk.Button(parity_frame, text="Add Rule", command=lambda: self._add_parity_row(parity_tree)).grid(row=1, column=0, pady=4)
-        ttk.Button(parity_frame, text="Edit Rule", command=lambda: self._edit_parity_row(parity_tree)).grid(row=1, column=1, pady=4)
-        ttk.Button(parity_frame, text="Delete Rule", command=lambda: self._del_parity_row(parity_tree)).grid(row=1, column=2, pady=4)
+        ttk.Button(parity_frame, text="Add Rule", bootstyle="secondary", command=lambda: self._add_parity_row(parity_tree)).grid(row=1, column=0, pady=4)
+        ttk.Button(parity_frame, text="Edit Rule", bootstyle="secondary", command=lambda: self._edit_parity_row(parity_tree)).grid(row=1, column=1, pady=4)
+        ttk.Button(parity_frame, text="Delete Rule", bootstyle="secondary", command=lambda: self._del_parity_row(parity_tree)).grid(row=1, column=2, pady=4)
 
         if fmt:
             for field in fmt.get("fields", []):
@@ -590,6 +563,7 @@ class App:
         ttk.Button(
             actions,
             text="Save",
+            bootstyle="primary",
             command=lambda: self._save_format(
                 win,
                 fmt,
@@ -600,7 +574,7 @@ class App:
                 tree,
             ),
         ).pack(side=tk.RIGHT)
-        ttk.Button(actions, text="Cancel", command=win.destroy).pack(side=tk.RIGHT, padx=8)
+        ttk.Button(actions, text="Cancel", bootstyle="secondary", command=win.destroy).pack(side=tk.RIGHT, padx=8)
 
         win.wait_window()
 
@@ -683,8 +657,8 @@ class App:
                 payloads[item_id] = {}
             win.destroy()
 
-        ttk.Button(frame, text="Save", command=save_row).grid(row=6, column=0, columnspan=2, pady=8)
-        ttk.Button(frame, text="Cancel", command=win.destroy).grid(row=7, column=0, columnspan=2, pady=4)
+        ttk.Button(frame, text="Save", bootstyle="primary", command=save_row).grid(row=6, column=0, columnspan=2, pady=8)
+        ttk.Button(frame, text="Cancel", bootstyle="secondary", command=win.destroy).grid(row=7, column=0, columnspan=2, pady=4)
 
         win.wait_window()
 
@@ -742,8 +716,8 @@ class App:
                 tree.insert("", tk.END, values=values)
             win.destroy()
 
-        ttk.Button(frame, text="Save", command=save_rule).grid(row=3, column=0, columnspan=2, pady=8)
-        ttk.Button(frame, text="Cancel", command=win.destroy).grid(row=4, column=0, columnspan=2, pady=4)
+        ttk.Button(frame, text="Save", bootstyle="primary", command=save_rule).grid(row=3, column=0, columnspan=2, pady=8)
+        ttk.Button(frame, text="Cancel", bootstyle="secondary", command=win.destroy).grid(row=4, column=0, columnspan=2, pady=4)
 
         win.wait_window()
 
@@ -889,8 +863,8 @@ class App:
                 )
             output.configure(state=tk.DISABLED)
 
-        ttk.Button(frame, text="Run", command=run_test).grid(row=5, column=0, pady=6)
-        ttk.Button(frame, text="Close", command=win.destroy).grid(row=5, column=1, pady=6)
+        ttk.Button(frame, text="Run", bootstyle="primary", command=run_test).grid(row=5, column=0, pady=6)
+        ttk.Button(frame, text="Close", bootstyle="secondary", command=win.destroy).grid(row=5, column=1, pady=6)
 
         win.wait_window()
 
@@ -1053,13 +1027,13 @@ class App:
         total = len(self.last_binary_used)
         mid = height // 2
         theme = self.theme
-        base_color = theme.get("border", "#8f95a3")
-        even_color = theme.get("select", theme.get("accent", "#0399CC"))
-        odd_color = theme.get("accent2", "#00B8E0")
+        base_color = theme.get("info", theme.get("accent2", "#00B8E0"))
+        even_color = theme.get("accent", "#0399CC")
+        odd_color = theme.get("info", theme.get("accent2", "#00B8E0"))
         ok_color = theme.get("ok", "#29B582")
         warn_color = theme.get("warn", "#7DBA00")
         fail_color = theme.get("error", "#C43E44")
-        marker_color = theme.get("text", "#333740")
+        marker_color = theme.get("info", odd_color)
 
         self.canvas.create_line(10, mid, width - 10, mid, fill=base_color, width=4)
         for result in self.last_format_checks:
@@ -1069,7 +1043,14 @@ class App:
             color = even_color if result["type"] == "even" else odd_color
             fill_color = ok_color if result.get("ok") else fail_color if result.get("ok") is False else warn_color
             blended = self._mix(color, fill_color, 0.35)
-            self.canvas.create_rectangle(x1, mid - 10, x2, mid + 10, fill=blended, outline="")
+            self.canvas.create_rectangle(
+                x1,
+                mid - 10,
+                x2,
+                mid + 10,
+                fill=blended,
+                outline=base_color,
+            )
             if result.get("parity_bit") is not None:
                 px = 10 + (width - 20) * (result["parity_bit"] / total)
                 self.canvas.create_line(px, mid - 14, px, mid + 14, fill=marker_color, width=2)
@@ -1130,7 +1111,7 @@ def main() -> None:
         pass
 
     try:
-        root = tk.Tk()
+        root = tb.Window(themename="light_jci")
         base_dir = getattr(sys, "_MEIPASS", application_dir())
         ico_path = Path(base_dir) / "icons" / "jci_globe.ico"
         png_path = Path(base_dir) / "icons" / "jci_globe_256.png"
