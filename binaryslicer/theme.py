@@ -153,9 +153,10 @@ def apply_bootstrap_theme(style: Style, mode: str, tokens: ThemeTokens) -> None:
                 "padding": (10, 6),
             },
             "map": {
-                "background": [("selected", tokens["accent"]), ("active", tokens["accent2"])],
-                "foreground": [("selected", on_accent)],
-                "bordercolor": [("focus", tokens["info"]), ("active", tokens["info"])],
+                "background": [("selected", tokens["panel2"]), ("active", tokens["panel"])],
+                "foreground": [("selected", tokens["text"])],
+                "bordercolor": [("selected", tokens["accent"]), ("focus", tokens["accent"]), ("active", tokens["accent2"])],
+                "lightcolor": [("selected", tokens["accent"]), ("focus", tokens["accent"])],
             },
         },
         "TEntry": {
