@@ -365,10 +365,10 @@ class QtMainWindow(QtWidgets.QMainWindow):
             offset_text = f"{result.slice_mode.title()} mode"
         self.offset_badge.setText(offset_text)
 
-        if result.formats_rendered:
-            status = f"Rendered: {', '.join(result.formats_rendered)}"
+        if result.best_format:
+            status = f"Format: {result.best_format}"
         else:
-            status = "No formats rendered."
+            status = "Format: (none passed parity)"
         self.status_label.setText(status)
 
     def _populate_table(self, model: QtGui.QStandardItemModel, rows: Iterable[TableRow]) -> None:
