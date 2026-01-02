@@ -107,7 +107,7 @@ class Controller:
         if exact:
             summary_lines.append("== Exact bit-length matches ==\n")
             rendered, diag_list, chunks, csv_rows, table_rows, parity_map = self._render_candidates(
-                binary_string, exact, None, show_parity_failures
+                binary_string, exact, None, show_parity_failures, match_type="exact"
             )
             if rendered:
                 diag_entries.extend(diag_list)
@@ -121,7 +121,7 @@ class Controller:
             summary_lines.append("== Compatible (input longer than known format) ==\n")
             summary_lines.append("These may indicate framing/padding.\n\n")
             rendered, diag_list, chunks, csv_rows, table_rows, parity_map = self._render_candidates(
-                binary_string, compatible, slice_mode, show_parity_failures
+                binary_string, compatible, slice_mode, show_parity_failures, match_type="compatible"
             )
             if rendered:
                 diag_entries.extend(diag_list)
@@ -174,6 +174,8 @@ class Controller:
         candidates: Sequence[Tuple[str, NormalizedFormat]],
         slice_mode: Optional[str],
         show_parity_failures: bool,
+        *,
+        match_type: Optional[str] = None,
     ) -> Tuple[bool, List[Dict], List[str], List[Dict], List[TableRow], Dict[str, List[ParityRow]]]:
         rendered = False
         diagnostics: List[Dict] = []
@@ -183,7 +185,9 @@ class Controller:
         parity_rows_map: Dict[str, List[ParityRow]] = {}
 
         if slice_mode == "auto":
-            return self._render_auto_candidates(binary_string, candidates, show_parity_failures)
+            return self._render_auto_candidates(
+                binary_string, candidates, show_parity_failures, match_type=match_type
+            )
 
         for name, fmt in candidates:
             use_bits, display_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, name)
@@ -193,7 +197,7 @@ class Controller:
                 use_bits,
                 display_name,
                 fmt,
-                {"mode": slice_mode},
+                {"mode": slice_mode, "match": match_type},
                 format_name=name,
             )
             summaries.append(summary_block)
@@ -210,6 +214,8 @@ class Controller:
         binary_string: str,
         candidates: Sequence[Tuple[str, NormalizedFormat]],
         show_parity_failures: bool,
+        *,
+        match_type: Optional[str] = None,
     ) -> Tuple[bool, List[Dict], List[str], List[Dict], List[TableRow], Dict[str, List[ParityRow]]]:
         rendered = False
         diagnostics: List[Dict] = []
@@ -247,6 +253,7 @@ class Controller:
                     "mode": "auto",
                     "offset": cand["offset"],
                     "top_candidates": all_results[:limit],
+                    "match": match_type,
                 },
                 format_name=entry["name"],
             )
@@ -355,14 +362,28 @@ class Controller:
 
     @staticmethod
     def _pick_best_entry(entries: Sequence[Mapping]) -> Optional[Mapping]:
-        def score(entry: Mapping) -> Tuple:
-            stats = entry.get("parity_stats") or {}
-            return stats.get("score_tuple") or (False, 0, 0, 0, 0)
-
         if not entries:
             return None
-        candidates = [entry for entry in entries if (entry.get("parity_stats") or {}).get("gated_fail") == 0]
-        pool = candidates or list(entries)
+
+        def score(entry: Mapping) -> Tuple:
+            stats = entry.get("parity_stats") or {}
+            return (stats.get("score_tuple") or (False, 0, 0, 0, 0), entry.get("bit_length") or 0)
+
+        def match(entry: Mapping) -> Optional[str]:
+            return (entry.get("meta") or {}).get("match")
+
+        exact_entries = [entry for entry in entries if match(entry) == "exact"]
+        pool = exact_entries or list(entries)
+
+        gated_ok = [
+            entry
+            for entry in pool
+            if (entry.get("parity_stats") or {}).get("gating_present")
+            and (entry.get("parity_stats") or {}).get("gated_fail") == 0
+        ]
+        if gated_ok:
+            pool = gated_ok
+
         return max(pool, key=score)
 
 
