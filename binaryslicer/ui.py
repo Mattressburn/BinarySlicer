@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox
 import ttkbootstrap as tb
 from ttkbootstrap import ttk
 
+from .diagnostics import build_diagnostics_report, parity_result_color
 from .decoder import format_binary_groups, process_input
 from .formats import (
     FormatValidationError,
@@ -24,6 +25,7 @@ from .formats import (
     normalize_format_entry,
     validate_format_entry,
     verify_parity,
+    parity_score,
 )
 from .paths import application_dir, ensure_user_config_dir, user_config_dir
 from .theme import (
@@ -138,10 +140,10 @@ class App:
 
         self.tab_table = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
         self.tab_visual = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
-        self.tab_details = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
+        self.tab_diagnostics = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
         self.nb.add(self.tab_table, text="Table")
         self.nb.add(self.tab_visual, text="Parity Visualizer")
-        self.nb.add(self.tab_details, text="Details")
+        self.nb.add(self.tab_diagnostics, text="Diagnostics")
 
         # Table view
         cols = ("Field", "Range", "Value", "Hex")
@@ -166,17 +168,22 @@ class App:
         self.tab_visual.rowconfigure(0, weight=1)
 
         # Details tab text
-        details_body = ttk.Frame(self.tab_details, style="Panel.TFrame")
-        details_body.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        details_body.columnconfigure(0, weight=1)
-        details_body.rowconfigure(0, weight=1)
-        self.details_text = tk.Text(details_body, wrap=tk.WORD, height=24, relief=tk.FLAT, borderwidth=6)
-        self.details_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        details_scroll = ttk.Scrollbar(details_body, orient=tk.VERTICAL, command=self.details_text.yview)
-        details_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        self.details_text.configure(yscrollcommand=details_scroll.set)
-        self.tab_details.rowconfigure(0, weight=1)
-        self.tab_details.columnconfigure(0, weight=1)
+        diag_body = ttk.Frame(self.tab_diagnostics, style="Panel.TFrame")
+        diag_body.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        diag_body.columnconfigure(0, weight=1)
+        diag_body.rowconfigure(0, weight=1)
+        self.diagnostics_text = tk.Text(diag_body, wrap=tk.WORD, height=24, relief=tk.FLAT, borderwidth=6)
+        self.diagnostics_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        diag_scroll = ttk.Scrollbar(diag_body, orient=tk.VERTICAL, command=self.diagnostics_text.yview)
+        diag_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.diagnostics_text.configure(yscrollcommand=diag_scroll.set)
+        diag_actions = ttk.Frame(diag_body, style="Panel.TFrame")
+        diag_actions.grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Button(diag_actions, text="Copy diagnostics", bootstyle="secondary", command=self.copy_diagnostics).pack(
+            side=tk.LEFT, padx=(0, 4)
+        )
+        self.tab_diagnostics.rowconfigure(0, weight=1)
+        self.tab_diagnostics.columnconfigure(0, weight=1)
 
         # Status
         cfg_dir = user_config_dir()
@@ -209,6 +216,7 @@ class App:
         self.last_rows_for_csv: list[dict] = []
         self.last_binary_used = ""
         self.last_format_checks: list[dict] = []
+        self.last_visual_context: dict | None = None
 
         self._apply_theme()
 
@@ -268,7 +276,7 @@ class App:
 
 
         self._apply_text_theme(self.summary_text, panel, text, border, mono_font, select, on_select)
-        self._apply_text_theme(self.details_text, panel, text, border, mono_font, select, on_select)
+        self._apply_text_theme(self.diagnostics_text, panel, text, border, mono_font, select, on_select)
         self.canvas.configure(bg=panel2, highlightbackground=border, highlightcolor=info)
         self._apply_treeview_tags()
 
@@ -322,18 +330,15 @@ class App:
         luma = 0.299 * r + 0.587 * g + 0.114 * b
         return "#000000" if luma > 186 else "#ffffff"
 
-    def _clear_text_views(self) -> None:
-        for widget in (self.summary_text, self.details_text):
-            widget.configure(state=tk.NORMAL)
-            widget.delete("1.0", tk.END)
+    def _set_text(self, widget: tk.Text, text: str) -> None:
+        widget.configure(state=tk.NORMAL)
+        widget.delete("1.0", tk.END)
+        widget.insert(tk.END, text)
+        widget.configure(state=tk.DISABLED)
 
-    def _append_text(self, text: str) -> None:
-        for widget in (self.summary_text, self.details_text):
-            widget.insert(tk.END, text)
-
-    def _finalize_text_views(self) -> None:
-        for widget in (self.summary_text, self.details_text):
-            widget.configure(state=tk.DISABLED)
+    def _clear_text(self, widget: tk.Text) -> None:
+        widget.configure(state=tk.NORMAL)
+        widget.delete("1.0", tk.END)
 
     def toggle_theme(self) -> None:
         modes = list(available_themes())
@@ -872,46 +877,67 @@ class App:
     # ---------------- Calculate / Render ----------------
     def on_calculate(self) -> None:
         input_data = self.input_entry.get()
-        binary_string, error = process_input(input_data)
+        binary_string, error, input_meta = process_input(input_data)
         if error:
             messagebox.showerror("Error", error)
             return
         self.last_binary_used = binary_string
-        self._clear_text_views()
-        self._append_text(f"Binary ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
+        self._clear_text(self.summary_text)
+        self._clear_text(self.diagnostics_text)
+
+        summary_lines: list[str] = []
+        summary_lines.append(f"Binary ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
 
         exact, compatible = self._detect_formats(binary_string)
+        diagnostics_context: dict = {
+            "input": input_meta,
+            "exact_matches": [name for name, _ in exact],
+            "compatible_matches": [name for name, _ in compatible],
+            "rendered": [],
+            "auto_candidates": [],
+            "slice_mode": self.slice_mode.get(),
+        }
+
         if not exact and not compatible:
-            self._append_text("No matching formats found.\n")
-            self._finalize_text_views()
+            summary_lines.append("No matching formats found.\n")
+            self._set_text(self.summary_text, "".join(summary_lines))
+            self._set_text(self.diagnostics_text, build_diagnostics_report(diagnostics_context))
             return
 
         self.last_rows_for_csv = []
         self.tree.delete(*self.tree.get_children(""))
         self.last_format_checks = []
+        self.last_visual_context: dict | None = None
 
         rendered_any = False
         if exact:
-            self._append_text("== Exact bit-length matches ==\n")
-            rendered_any |= self._render_candidates(binary_string, exact, slice_mode=None)
+            summary_lines.append("== Exact bit-length matches ==\n")
+            rendered, diag, chunks = self._render_candidates(binary_string, exact, slice_mode=None)
+            diagnostics_context["rendered"].extend(diag)
+            summary_lines.extend(chunks)
+            rendered_any |= rendered
 
         if compatible:
-            self._append_text("== Compatible (input longer than known format) ==\n")
-            self._append_text("These may indicate framing/padding.\n\n")
-            rendered_any |= self._render_candidates(
+            summary_lines.append("== Compatible (input longer than known format) ==\n")
+            summary_lines.append("These may indicate framing/padding.\n\n")
+            rendered, diag, chunks = self._render_candidates(
                 binary_string,
                 compatible,
                 slice_mode=self.slice_mode.get(),
             )
+            diagnostics_context["rendered"].extend(diag)
+            summary_lines.extend(chunks)
+            rendered_any |= rendered
 
         if not rendered_any:
-            self._append_text(
+            summary_lines.append(
                 "No formats passed parity in strict mode.\n"
                 "Tip: Enable 'Show parity failures (diagnostic)' to inspect candidates.\n"
             )
 
+        self._set_text(self.summary_text, "".join(summary_lines))
+        self._set_text(self.diagnostics_text, build_diagnostics_report(diagnostics_context))
         self._draw_parity_visualizer()
-        self._finalize_text_views()
 
     def _detect_formats(self, binary_string: str):
         exact = []
@@ -924,10 +950,14 @@ class App:
                 compatible.append((name, fmt))
         return exact, compatible
 
-    def _render_candidates(self, binary_string: str, candidates: list[tuple], slice_mode: str | None) -> bool:
+    def _render_candidates(
+        self, binary_string: str, candidates: list[tuple], slice_mode: str | None
+    ) -> tuple[bool, list[dict], list[str]]:
         if slice_mode == "auto":
             return self._render_auto_candidates(binary_string, candidates)
         rendered = False
+        diagnostics: list[dict] = []
+        summaries: list[str] = []
         for name, fmt in candidates:
             bit_length = fmt.bit_length
             if slice_mode is None:
@@ -938,19 +968,23 @@ class App:
                 display_name = name + (" (leftmost)" if slice_mode == "left" else " (rightmost)")
             if not self.show_fails.get() and not self._parity_all_ok(use_bits, fmt):
                 continue
-            self._render_format(use_bits, display_name, fmt)
+            summary_block, diag_entry = self._render_format(use_bits, display_name, fmt, {"mode": slice_mode})
+            summaries.append(summary_block)
+            diagnostics.append(diag_entry)
             rendered = True
-        return rendered
+        return rendered, diagnostics, summaries
 
-    def _render_auto_candidates(self, binary_string: str, candidates: list[tuple]) -> bool:
+    def _render_auto_candidates(self, binary_string: str, candidates: list[tuple]) -> tuple[bool, list[dict], list[str]]:
         rendered = False
+        diagnostics: list[dict] = []
+        summaries: list[str] = []
         all_results: list[dict] = []
         for name, fmt in candidates:
             best = find_best_offsets(binary_string, fmt, step=1, top_n=3)
             for cand in best:
                 all_results.append({"name": name, "fmt": fmt, "candidate": cand})
         if not all_results:
-            return False
+            return False, diagnostics, summaries
         all_results.sort(key=lambda c: c["candidate"]["score_key"], reverse=True)
         limit = max(3, min(len(all_results), 10))
         for entry in all_results[:limit]:
@@ -963,17 +997,27 @@ class App:
                 f"{entry['name']} (auto offset +{cand['offset']}, "
                 f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
             )
-            self._render_format(cand["bits"], display_name, entry["fmt"])
+            summary_block, diag_entry = self._render_format(
+                cand["bits"],
+                display_name,
+                entry["fmt"],
+                {"mode": "auto", "offset": cand["offset"], "top_candidates": all_results[:limit]},
+            )
+            summaries.append(summary_block)
+            diagnostics.append(diag_entry)
             rendered = True
-        return rendered
+        return rendered, diagnostics, summaries
 
-    def _render_format(self, binary_string: str, name: str, fmt: NormalizedFormat) -> None:
-        self._append_text(f"Format: {name}\n")
+    def _render_format(
+        self, binary_string: str, name: str, fmt: NormalizedFormat, meta: dict | None = None
+    ) -> tuple[str, dict]:
+        meta = meta or {}
+        summary_lines: list[str] = [f"Format: {name}\n"]
         fields = extract_fields(binary_string, fmt)
         for field, meta in fields.items():
             if meta.get("hidden"):
                 continue
-            self._append_text(
+            summary_lines.append(
                 f"  {field:14}: {meta['int']} (hex {meta['hex']}), bits[{meta['len']}]={meta['bits']}\n"
             )
             start, end = meta["range"]
@@ -988,9 +1032,9 @@ class App:
                     "Value": meta["int"],
                     "Hex": meta["hex"],
                     "BitLength": meta["len"],
-                    "Bits": meta["bits"],
-                }
-            )
+            "Bits": meta["bits"],
+        }
+        )
         parity = verify_parity(binary_string, fmt)
         if parity:
             for result in parity:
@@ -1002,12 +1046,24 @@ class App:
                     status = "(no parity bit)"
                 note = " (advisory)" if not result.get("gate", True) else ""
                 parity_loc = f"; parity_bit={result.get('parity_bit')}" if result.get("parity_bit") is not None else ""
-                self._append_text(
+                summary_lines.append(
                     f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status}{note} "
                     f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']}{parity_loc})\n"
                 )
             self.last_format_checks = parity
-        self._append_text("\n")
+        self.last_visual_context = {
+            "total_bits": len(binary_string),
+            "parity_results": parity,
+            "format_name": name,
+        }
+        summary_lines.append("\n")
+        return "\n".join(summary_lines), {
+            "name": name,
+            "bit_length": len(binary_string),
+            "parity": parity,
+            "parity_stats": parity_score(parity) if parity else None,
+            "meta": meta,
+        }
 
     def _parity_all_ok(self, binary_string: str, fmt: NormalizedFormat) -> bool:
         parity = verify_parity(binary_string, fmt)
@@ -1021,51 +1077,112 @@ class App:
     # ---------------- Visualizer ----------------
     def _draw_parity_visualizer(self) -> None:
         self.canvas.delete("all")
-        if not self.last_binary_used:
+        ctx = self.last_visual_context
+        if not ctx:
             return
         width = self.canvas.winfo_width() or self.canvas.winfo_reqwidth()
         height = self.canvas.winfo_height() or 60
-        total = len(self.last_binary_used)
+        total = max(1, ctx.get("total_bits") or len(self.last_binary_used) or 1)
         mid = height // 2
         theme = self.theme
-        base_color = theme.get("info", theme.get("accent2", "#00B8E0"))
-        even_color = theme.get("accent", "#0399CC")
-        odd_color = theme.get("info", theme.get("accent2", "#00B8E0"))
-        ok_color = theme.get("ok", "#29B582")
-        warn_color = theme.get("warn", "#7DBA00")
-        fail_color = theme.get("error", "#C43E44")
-        marker_color = theme.get("info", odd_color)
+        base_color = theme.get("border", theme.get("accent", "#0399CC"))
+        muted_color = theme.get("muted", theme.get("panel2", "#cccccc"))
+        marker_color = theme.get("info", theme.get("accent2", "#00B8E0"))
+        show_diag = self.show_fails.get()
 
-        self.canvas.create_line(10, mid, width - 10, mid, fill=base_color, width=4)
-        for result in self.last_format_checks:
-            start, end = result["coverage"]
-            x1 = 10 + (width - 20) * (start / total)
-            x2 = 10 + (width - 20) * (end / total)
-            color = even_color if result["type"] == "even" else odd_color
-            fill_color = ok_color if result.get("ok") else fail_color if result.get("ok") is False else warn_color
-            blended = self._mix(color, fill_color, 0.35)
-            self.canvas.create_rectangle(
-                x1,
-                mid - 10,
-                x2,
-                mid + 10,
-                fill=blended,
-                outline=base_color,
+        # Baseline ruler
+        start_x, end_x = 14, width - 14
+        self.canvas.create_line(start_x, mid, end_x, mid, fill=base_color, width=3)
+        tick_count = max(2, min(10, total))
+        step = max(1, total // (tick_count - 1))
+        for i in range(0, total + 1, step):
+            x = start_x + (end_x - start_x) * (i / total)
+            self.canvas.create_line(x, mid - 8, x, mid + 8, fill=base_color, width=1)
+
+        parity_results = ctx.get("parity_results") or []
+        tooltips: dict[int, str] = {}
+
+        if not parity_results:
+            self.canvas.create_text(
+                start_x,
+                mid - 16,
+                anchor=tk.W,
+                fill=muted_color,
+                text="No parity rules for rendered format",
             )
-            if result.get("parity_bit") is not None:
-                px = 10 + (width - 20) * (result["parity_bit"] / total)
-                self.canvas.create_line(px, mid - 14, px, mid + 14, fill=marker_color, width=2)
+        else:
+            for result in parity_results:
+                start, end = result["coverage"]
+                x1 = start_x + (end_x - start_x) * (start / total)
+                x2 = start_x + (end_x - start_x) * (end / total)
+                color = parity_result_color(result, theme, show_diag)
+                rect = self.canvas.create_rectangle(
+                    x1,
+                    mid - 12,
+                    x2,
+                    mid + 12,
+                    fill=self._mix(color, theme.get("panel", "#ffffff"), 0.15),
+                    outline=color,
+                    width=2,
+                )
+                parity_bit = result.get("parity_bit")
+                if parity_bit is not None:
+                    px = start_x + (end_x - start_x) * (parity_bit / total)
+                    self.canvas.create_line(px, mid - 16, px, mid + 16, fill=marker_color, width=2)
+                tooltip_text = (
+                    f"Parity {result.get('type','?')} {start}-{end}: "
+                    f"expected {result.get('expected')}, got {result.get('actual')}"
+                )
+                if parity_bit is not None:
+                    tooltip_text += f", parity_bit={parity_bit}"
+                tooltips[rect] = tooltip_text
+                self.canvas.tag_bind(rect, "<Enter>", lambda e, tid=rect: self._show_canvas_tooltip(e.x, e.y, tooltips[tid]))
+                self.canvas.tag_bind(rect, "<Leave>", lambda _e: self._hide_canvas_tooltip())
+
+        # Legend
+        legend_items = [
+            ("Pass", theme.get("ok", base_color)),
+            ("Fail", theme.get("error", base_color)),
+            ("Advisory", theme.get("warn", base_color)),
+            ("Not evaluated", muted_color),
+        ]
+        lx, ly = start_x, height - 18
+        for label, color in legend_items:
+            self.canvas.create_rectangle(lx, ly - 8, lx + 14, ly + 6, fill=color, outline=base_color)
+            self.canvas.create_text(lx + 20, ly - 1, anchor=tk.W, fill=theme.get("text", "#000000"), text=label)
+            lx += 120
+
+    def _show_canvas_tooltip(self, x: float, y: float, text: str) -> None:
+        self._hide_canvas_tooltip()
+        self._tooltip_text = self.canvas.create_text(
+            x + 10, y - 14, text=text, anchor=tk.W, fill=self.theme.get("text", "#000000"), tags=("tooltip",)
+        )
+
+    def _hide_canvas_tooltip(self) -> None:
+        if hasattr(self, "_tooltip_text"):
+            self.canvas.delete(getattr(self, "_tooltip_text"))
+            delattr(self, "_tooltip_text")
 
     # ---------------- Copy / Export ----------------
     def copy_results(self) -> None:
-        prev_state = self.details_text.cget("state")
-        self.details_text.configure(state=tk.NORMAL)
-        text = self.details_text.get("1.0", tk.END)
+        prev_state = self.summary_text.cget("state")
+        self.summary_text.configure(state=tk.NORMAL)
+        text = self.summary_text.get("1.0", tk.END)
         if prev_state != tk.NORMAL:
-            self.details_text.configure(state=prev_state)
+            self.summary_text.configure(state=prev_state)
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
         self.status.configure(text="Results copied to clipboard.")
+
+    def copy_diagnostics(self) -> None:
+        prev_state = self.diagnostics_text.cget("state")
+        self.diagnostics_text.configure(state=tk.NORMAL)
+        text = self.diagnostics_text.get("1.0", tk.END)
+        if prev_state != tk.NORMAL:
+            self.diagnostics_text.configure(state=prev_state)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.status.configure(text="Diagnostics copied to clipboard.")
 
     def copy_selected_table(self) -> None:
         selected = self.tree.focus()

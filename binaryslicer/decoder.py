@@ -31,14 +31,25 @@ def process_input(raw: str):
     cleaned = cleaned.replace(" ", "").replace("-", "").replace("_", "")
     if cleaned.startswith(("0x", "0X")):
         cleaned = cleaned[2:]
+
+    meta = {
+        "raw_length": len(raw or ""),
+        "cleaned_length": len(cleaned),
+        "cleaned": cleaned,
+        "input_type": "unknown",
+        "normalized_length": 0,
+    }
+
     if is_binary(cleaned):
-        return cleaned, None
+        meta.update({"input_type": "binary", "normalized_length": len(cleaned)})
+        return cleaned, None, meta
     if is_hex(cleaned):
         converted = hex_to_binary(cleaned)
         if converted is None:
-            return None, "Invalid hex input."
-        return converted, None
-    return None, "Input must be hex or binary (e.g., 0x1A2B, 1100101)."
+            return None, "Invalid hex input.", meta
+        meta.update({"input_type": "hex", "normalized_length": len(converted)})
+        return converted, None, meta
+    return None, "Input must be hex or binary (e.g., 0x1A2B, 1100101).", meta
 
 
 def format_binary_groups(bits: str, group: int = 4) -> str:
