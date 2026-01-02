@@ -14,7 +14,7 @@ from tkinter import filedialog, messagebox
 import ttkbootstrap as tb
 from ttkbootstrap import ttk
 
-from .diagnostics import build_diagnostics_report, parity_result_color
+from .diagnostics import build_diagnostics_report
 from .decoder import format_binary_groups, process_input
 from .formats import (
     FormatValidationError,
@@ -101,7 +101,11 @@ class App:
         ttk.Label(options, text="Options", style="Muted.TLabel").grid(row=0, column=0, sticky=tk.W)
         self.show_fails = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            options, text="Show parity failures (diagnostic)", variable=self.show_fails, style="TCheckbutton"
+            options,
+            text="Show parity failures (diagnostic)",
+            variable=self.show_fails,
+            style="TCheckbutton",
+            command=self._refresh_diagnostics_tree,
         ).grid(row=0, column=1, padx=(12, 8), sticky=tk.W)
 
         ttk.Label(options, text="Compatible slicing:", style="Muted.TLabel").grid(row=0, column=2, padx=(8, 4))
@@ -139,10 +143,8 @@ class App:
         self.nb.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
 
         self.tab_table = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
-        self.tab_visual = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
         self.tab_diagnostics = ttk.Frame(self.nb, padding=8, style="Panel.TFrame")
         self.nb.add(self.tab_table, text="Table")
-        self.nb.add(self.tab_visual, text="Parity Visualizer")
         self.nb.add(self.tab_diagnostics, text="Diagnostics")
 
         # Table view
@@ -161,23 +163,41 @@ class App:
         )
         self.copy_table_btn.grid(row=1, column=0, sticky=tk.W, pady=6)
 
-        # Visualizer canvas
-        self.canvas = tk.Canvas(self.tab_visual, height=90, highlightthickness=0)
-        self.canvas.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        self.tab_visual.columnconfigure(0, weight=1)
-        self.tab_visual.rowconfigure(0, weight=1)
-
-        # Details tab text
+        # Diagnostics tab
         diag_body = ttk.Frame(self.tab_diagnostics, style="Panel.TFrame")
         diag_body.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
         diag_body.columnconfigure(0, weight=1)
         diag_body.rowconfigure(0, weight=1)
-        self.diagnostics_text = tk.Text(diag_body, wrap=tk.WORD, height=24, relief=tk.FLAT, borderwidth=6)
-        self.diagnostics_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-        diag_scroll = ttk.Scrollbar(diag_body, orient=tk.VERTICAL, command=self.diagnostics_text.yview)
+        diag_body.rowconfigure(1, weight=2)
+
+        diag_columns = ("Type", "Coverage", "Status", "Expected", "Actual", "DataLen", "ParityBit", "Gate")
+        self.diagnostics_tree = ttk.Treeview(
+            diag_body,
+            columns=diag_columns,
+            show="headings",
+            style="Results.Treeview",
+            height=8,
+        )
+        for col in diag_columns:
+            anchor = tk.W
+            width = 110 if col not in {"Type", "Coverage"} else 140
+            self.diagnostics_tree.heading(col, text=col)
+            self.diagnostics_tree.column(col, stretch=True, anchor=anchor, width=width)
+        diag_scroll = ttk.Scrollbar(diag_body, orient=tk.VERTICAL, command=self.diagnostics_tree.yview)
         diag_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        self.diagnostics_text.configure(yscrollcommand=diag_scroll.set)
-        diag_actions = ttk.Frame(diag_body, style="Panel.TFrame")
+        self.diagnostics_tree.configure(yscrollcommand=diag_scroll.set)
+        self.diagnostics_tree.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(0, 6))
+
+        diag_text_frame = ttk.Frame(diag_body, style="Panel.TFrame")
+        diag_text_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.N, tk.S, tk.E, tk.W))
+        diag_text_frame.columnconfigure(0, weight=1)
+        diag_text_frame.rowconfigure(0, weight=1)
+        self.diagnostics_text = tk.Text(diag_text_frame, wrap=tk.WORD, height=12, relief=tk.FLAT, borderwidth=6)
+        self.diagnostics_text.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        diag_text_scroll = ttk.Scrollbar(diag_text_frame, orient=tk.VERTICAL, command=self.diagnostics_text.yview)
+        diag_text_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.diagnostics_text.configure(yscrollcommand=diag_text_scroll.set)
+        diag_actions = ttk.Frame(diag_text_frame, style="Panel.TFrame")
         diag_actions.grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
         ttk.Button(diag_actions, text="Copy diagnostics", bootstyle="secondary", command=self.copy_diagnostics).pack(
             side=tk.LEFT, padx=(0, 4)
@@ -216,9 +236,9 @@ class App:
         self.last_rows_for_csv: list[dict] = []
         self.last_binary_used = ""
         self.last_format_checks: list[dict] = []
-        self.last_visual_context: dict | None = None
 
         self._apply_theme()
+        self._refresh_diagnostics_tree()
 
     # ---------------- Theme helpers ----------------
     def _init_styles(self) -> None:
@@ -277,7 +297,6 @@ class App:
 
         self._apply_text_theme(self.summary_text, panel, text, border, mono_font, select, on_select)
         self._apply_text_theme(self.diagnostics_text, panel, text, border, mono_font, select, on_select)
-        self.canvas.configure(bg=panel2, highlightbackground=border, highlightcolor=info)
         self._apply_treeview_tags()
 
     def _apply_text_theme(
@@ -307,6 +326,14 @@ class App:
         self.tree.tag_configure("even", background=panel)
         self.tree.tag_configure("odd", background=alt)
         self.tree.tag_configure("value_mono", font=("Consolas", 10))
+
+        if hasattr(self, "diagnostics_tree"):
+            self.diagnostics_tree.tag_configure("even", background=panel)
+            self.diagnostics_tree.tag_configure("odd", background=alt)
+            self.diagnostics_tree.tag_configure("status_ok", foreground=self.theme.get("ok", "#29B582"))
+            self.diagnostics_tree.tag_configure("status_fail", foreground=self.theme.get("error", "#E2555D"))
+            self.diagnostics_tree.tag_configure("status_warn", foreground=self.theme.get("warn", "#7DBA00"))
+            self.diagnostics_tree.tag_configure("status_neutral", foreground=self.theme.get("muted", "#9aa0ad"))
 
     @staticmethod
     def _mix(color: str, other: str, ratio: float) -> str:
@@ -349,7 +376,6 @@ class App:
         self.theme_doc["last_mode"] = self.theme_mode
         save_theme_document(self.theme_doc)
         self.status.configure(text=f"Theme set to {self.theme_mode} mode")
-        self._draw_parity_visualizer()
 
     # ---------------- Menu ----------------
     def _build_menu(self) -> None:
@@ -902,12 +928,12 @@ class App:
             summary_lines.append("No matching formats found.\n")
             self._set_text(self.summary_text, "".join(summary_lines))
             self._set_text(self.diagnostics_text, build_diagnostics_report(diagnostics_context))
+            self._refresh_diagnostics_tree()
             return
 
         self.last_rows_for_csv = []
         self.tree.delete(*self.tree.get_children(""))
         self.last_format_checks = []
-        self.last_visual_context: dict | None = None
 
         rendered_any = False
         if exact:
@@ -937,7 +963,7 @@ class App:
 
         self._set_text(self.summary_text, "".join(summary_lines))
         self._set_text(self.diagnostics_text, build_diagnostics_report(diagnostics_context))
-        self._draw_parity_visualizer()
+        self._refresh_diagnostics_tree()
 
     def _detect_formats(self, binary_string: str):
         exact = []
@@ -1032,9 +1058,9 @@ class App:
                     "Value": meta["int"],
                     "Hex": meta["hex"],
                     "BitLength": meta["len"],
-            "Bits": meta["bits"],
-        }
-        )
+                    "Bits": meta["bits"],
+                }
+            )
         parity = verify_parity(binary_string, fmt)
         if parity:
             for result in parity:
@@ -1051,11 +1077,6 @@ class App:
                     f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']}{parity_loc})\n"
                 )
             self.last_format_checks = parity
-        self.last_visual_context = {
-            "total_bits": len(binary_string),
-            "parity_results": parity,
-            "format_name": name,
-        }
         summary_lines.append("\n")
         return "\n".join(summary_lines), {
             "name": name,
@@ -1074,94 +1095,61 @@ class App:
                 return False
         return True
 
-    # ---------------- Visualizer ----------------
-    def _draw_parity_visualizer(self) -> None:
-        self.canvas.delete("all")
-        ctx = self.last_visual_context
-        if not ctx:
+    def _diagnostic_status(self, result: dict) -> tuple[str, str]:
+        ok = result.get("ok")
+        gate = result.get("gate", True)
+        if ok is True:
+            return "OK", "status_ok"
+        if ok is False:
+            return ("FAIL" if gate else "Advisory"), ("status_fail" if gate else "status_warn")
+        return "Not evaluated", "status_neutral"
+
+    def _refresh_diagnostics_tree(self) -> None:
+        if not hasattr(self, "diagnostics_tree"):
             return
-        width = self.canvas.winfo_width() or self.canvas.winfo_reqwidth()
-        height = self.canvas.winfo_height() or 60
-        total = max(1, ctx.get("total_bits") or len(self.last_binary_used) or 1)
-        mid = height // 2
-        theme = self.theme
-        base_color = theme.get("border", theme.get("accent", "#0399CC"))
-        muted_color = theme.get("muted", theme.get("panel2", "#cccccc"))
-        marker_color = theme.get("info", theme.get("accent2", "#00B8E0"))
-        show_diag = self.show_fails.get()
+        self.diagnostics_tree.delete(*self.diagnostics_tree.get_children(""))
 
-        # Baseline ruler
-        start_x, end_x = 14, width - 14
-        self.canvas.create_line(start_x, mid, end_x, mid, fill=base_color, width=3)
-        tick_count = max(2, min(10, total))
-        step = max(1, total // (tick_count - 1))
-        for i in range(0, total + 1, step):
-            x = start_x + (end_x - start_x) * (i / total)
-            self.canvas.create_line(x, mid - 8, x, mid + 8, fill=base_color, width=1)
-
-        parity_results = ctx.get("parity_results") or []
-        tooltips: dict[int, str] = {}
-
-        if not parity_results:
-            self.canvas.create_text(
-                start_x,
-                mid - 16,
-                anchor=tk.W,
-                fill=muted_color,
-                text="No parity rules for rendered format",
+        show_all = self.show_fails.get()
+        rows = self.last_format_checks or []
+        if not rows:
+            self.diagnostics_tree.insert(
+                "",
+                tk.END,
+                values=("No parity checks", "", "Not evaluated", "", "", "", "", ""),
+                tags=("status_neutral",),
             )
-        else:
-            for result in parity_results:
-                start, end = result["coverage"]
-                x1 = start_x + (end_x - start_x) * (start / total)
-                x2 = start_x + (end_x - start_x) * (end / total)
-                color = parity_result_color(result, theme, show_diag)
-                rect = self.canvas.create_rectangle(
-                    x1,
-                    mid - 12,
-                    x2,
-                    mid + 12,
-                    fill=self._mix(color, theme.get("panel", "#ffffff"), 0.15),
-                    outline=color,
-                    width=2,
-                )
-                parity_bit = result.get("parity_bit")
-                if parity_bit is not None:
-                    px = start_x + (end_x - start_x) * (parity_bit / total)
-                    self.canvas.create_line(px, mid - 16, px, mid + 16, fill=marker_color, width=2)
-                tooltip_text = (
-                    f"Parity {result.get('type','?')} {start}-{end}: "
-                    f"expected {result.get('expected')}, got {result.get('actual')}"
-                )
-                if parity_bit is not None:
-                    tooltip_text += f", parity_bit={parity_bit}"
-                tooltips[rect] = tooltip_text
-                self.canvas.tag_bind(rect, "<Enter>", lambda e, tid=rect: self._show_canvas_tooltip(e.x, e.y, tooltips[tid]))
-                self.canvas.tag_bind(rect, "<Leave>", lambda _e: self._hide_canvas_tooltip())
+            return
 
-        # Legend
-        legend_items = [
-            ("Pass", theme.get("ok", base_color)),
-            ("Fail", theme.get("error", base_color)),
-            ("Advisory", theme.get("warn", base_color)),
-            ("Not evaluated", muted_color),
-        ]
-        lx, ly = start_x, height - 18
-        for label, color in legend_items:
-            self.canvas.create_rectangle(lx, ly - 8, lx + 14, ly + 6, fill=color, outline=base_color)
-            self.canvas.create_text(lx + 20, ly - 1, anchor=tk.W, fill=theme.get("text", "#000000"), text=label)
-            lx += 120
+        visible_idx = 0
+        for result in rows:
+            if not show_all and result.get("ok") is not False:
+                continue
+            coverage = result.get("coverage") or ("?", "?")
+            coverage_text = f"{coverage[0]}–{coverage[1]}"
+            status_text, status_tag = self._diagnostic_status(result)
+            parity_bit = result.get("parity_bit")
+            values = (
+                result.get("label") or result.get("type", ""),
+                coverage_text,
+                status_text,
+                result.get("expected", ""),
+                result.get("actual", ""),
+                result.get("data_len", ""),
+                "-" if parity_bit is None else parity_bit,
+                "Yes" if result.get("gate", True) else "Advisory",
+            )
+            row_tags = ("even",) if visible_idx % 2 == 0 else ("odd",)
+            row_tags += (status_tag,)
+            self.diagnostics_tree.insert("", tk.END, values=values, tags=row_tags)
+            visible_idx += 1
 
-    def _show_canvas_tooltip(self, x: float, y: float, text: str) -> None:
-        self._hide_canvas_tooltip()
-        self._tooltip_text = self.canvas.create_text(
-            x + 10, y - 14, text=text, anchor=tk.W, fill=self.theme.get("text", "#000000"), tags=("tooltip",)
-        )
-
-    def _hide_canvas_tooltip(self) -> None:
-        if hasattr(self, "_tooltip_text"):
-            self.canvas.delete(getattr(self, "_tooltip_text"))
-            delattr(self, "_tooltip_text")
+        if visible_idx == 0:
+            self.diagnostics_tree.insert(
+                "",
+                tk.END,
+                values=("No parity failures to show", "", "OK", "", "", "", "", ""),
+                tags=("status_neutral",),
+            )
 
     # ---------------- Copy / Export ----------------
     def copy_results(self) -> None:
