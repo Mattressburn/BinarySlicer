@@ -58,6 +58,7 @@ class AnalysisResult:
     parity_ok: Optional[bool] = None
     parity_stats: Dict[str, int] = field(default_factory=dict)
     best_offset: Optional[int] = None
+    best_format: Optional[str] = None
     slice_mode: Optional[str] = None
     bit_length: int = 0
 
@@ -148,6 +149,7 @@ class Controller:
             result.parity_stats = stats
             result.parity_ok = stats["gated_fail"] == 0 if stats["gating_present"] else None
             result.best_offset = best_entry.get("meta", {}).get("offset")
+            result.best_format = best_entry.get("format")
             parity_rows = parity_rows_map.get(best_entry["name"], [])
             if not show_parity_failures:
                 parity_rows = [row for row in parity_rows if row.ok is False]
@@ -192,6 +194,7 @@ class Controller:
                 display_name,
                 fmt,
                 {"mode": slice_mode},
+                format_name=name,
             )
             summaries.append(summary_block)
             diagnostics.append(diag_entry)
@@ -245,6 +248,7 @@ class Controller:
                     "offset": cand["offset"],
                     "top_candidates": all_results[:limit],
                 },
+                format_name=entry["name"],
             )
             summaries.append(summary_block)
             diagnostics.append(diag_entry)
@@ -274,7 +278,13 @@ class Controller:
         return True
 
     def _render_format(
-        self, binary_string: str, name: str, fmt: NormalizedFormat, meta: Optional[Mapping] = None
+        self,
+        binary_string: str,
+        name: str,
+        fmt: NormalizedFormat,
+        meta: Optional[Mapping] = None,
+        *,
+        format_name: Optional[str] = None,
     ) -> Tuple[str, Dict, List[TableRow], List[Dict], List[ParityRow]]:
         meta = dict(meta or {})
         summary_lines: List[str] = [f"Format: {name}\n"]
@@ -315,9 +325,10 @@ class Controller:
 
         return "\n".join(summary_lines), {
             "name": name,
+            "format": format_name or name,
             "bit_length": len(binary_string),
             "parity": parity,
-            "parity_stats": parity_score(parity) if parity else None,
+            "parity_stats": parity_score(parity or []),
             "meta": meta,
         }, table_rows, csv_rows, parity_rows
 
@@ -350,7 +361,9 @@ class Controller:
 
         if not entries:
             return None
-        return max(entries, key=score)
+        candidates = [entry for entry in entries if (entry.get("parity_stats") or {}).get("gated_fail") == 0]
+        pool = candidates or list(entries)
+        return max(pool, key=score)
 
 
 __all__ = ["Controller", "AnalysisResult", "TableRow", "ParityRow"]
