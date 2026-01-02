@@ -1,18 +1,25 @@
 # BinarySlicer
 
-BinarySlicer is a Tkinter desktop tool for decoding physical access control payloads. It loads
-format definitions and theming information from JSON documents so the app can be extended without
-modifying the source code.
+BinarySlicer is a desktop tool (Tkinter + PySide6/Qt) for decoding physical access control payloads.
+It loads format definitions and theming information from JSON documents so the app can be extended
+without modifying the source code.
 
 ## Running the application
 
+Launch the Tkinter UI (default):
+
 ```bash
-python "Binary Slicer.py"
+python launcher.py
 ```
 
-The script launches the Tkinter UI from the `binaryslicer.ui` module. When building a frozen
-executable (e.g. with PyInstaller) include the `binaryslicer/`, `icons/`, and `config/` directories
-so the runtime resources are available.
+Launch the PySide6/Qt UI:
+
+```bash
+python launcher.py --qt
+```
+
+When building a frozen executable (e.g. with PyInstaller) include the `binaryslicer/`, `icons/`, and
+`config/` directories so the runtime resources are available.
 
 ## Configuration and data files
 
