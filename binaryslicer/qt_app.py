@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import csv
 import sys
+import textwrap
 from pathlib import Path
 from typing import Iterable, List, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .controller import AnalysisResult, Controller, ParityRow, TableRow
+from .decoder import format_binary_groups
 from .paths import application_dir
 from .qt_theme import QtThemeManager, build_qss
 
@@ -22,6 +24,20 @@ class PillButton(QtWidgets.QPushButton):
         self.setCheckable(checkable)
         self.setObjectName("ChipButton")
         self.setCursor(QtCore.Qt.PointingHandCursor)
+
+
+class ScrollingLineEdit(QtWidgets.QLineEdit):
+    """Line edit that avoids expanding based on content length."""
+
+    def sizeHint(self) -> QtCore.QSize:  # type: ignore[override]
+        hint = super().sizeHint()
+        hint.setWidth(420)
+        return hint
+
+    def minimumSizeHint(self) -> QtCore.QSize:  # type: ignore[override]
+        hint = super().minimumSizeHint()
+        hint.setWidth(240)
+        return hint
 
 
 class QtMainWindow(QtWidgets.QMainWindow):
@@ -38,6 +54,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.last_result: Optional[AnalysisResult] = None
         self.mono_font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
         self.theme_dots: List[QtWidgets.QFrame] = []
+        self.raw_input: str = ""
 
         self._build_ui()
         self.apply_theme()
@@ -95,10 +112,13 @@ class QtMainWindow(QtWidgets.QMainWindow):
         label.setObjectName("Muted")
         layout.addWidget(label)
 
-        self.input_edit = QtWidgets.QLineEdit()
+        self.input_edit = ScrollingLineEdit()
         self.input_edit.setPlaceholderText("000101101000...")
         self.input_edit.setFont(self.mono_font)
+        self.input_edit.setClearButtonEnabled(True)
+        self.input_edit.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self.input_edit.returnPressed.connect(self.calculate)
+        self.input_edit.textEdited.connect(self._handle_input_edited)
         layout.addWidget(self.input_edit, stretch=1)
 
         self.calc_button = QtWidgets.QPushButton("Calculate")
@@ -158,6 +178,11 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.parity_status = QtWidgets.QLabel("Parity —")
         self.parity_status.setObjectName("StatusChip")
         layout.addWidget(self.parity_status)
+
+        self.pretty_chip = PillButton("Pretty", checkable=True)
+        self.pretty_chip.setToolTip("Group bits for readability without altering the value.")
+        self.pretty_chip.toggled.connect(self._toggle_pretty)
+        layout.addWidget(self.pretty_chip)
 
         layout.addStretch()
         return frame
@@ -276,8 +301,10 @@ class QtMainWindow(QtWidgets.QMainWindow):
         elif self.right_chip.isChecked():
             slice_mode = "right"
 
+        raw_value = self.raw_input or self._normalize_input(self.input_edit.text())
+
         result = self.controller.analyze_input(
-            self.input_edit.text(),
+            raw_value,
             slice_mode=slice_mode,
             show_parity_failures=self.diagnostics_chip.isChecked(),
         )
@@ -399,6 +426,39 @@ class QtMainWindow(QtWidgets.QMainWindow):
     def _set_status_chip(label: QtWidgets.QLabel, text: str, color: str) -> None:
         label.setText(text)
         label.setStyleSheet(f"background:{color}; color: white; padding: 8px 14px; border-radius: 14px; font-weight:700;")
+
+    # ---------------- Input helpers ----------------
+    def _normalize_input(self, text: str) -> str:
+        cleaned = text.replace(" ", "").replace("\n", "").replace("\t", "").replace("\r", "")
+        return cleaned.replace("_", "").replace("-", "")
+
+    def _handle_input_edited(self, text: str) -> None:
+        self.raw_input = self._normalize_input(text)
+        if self.pretty_chip.isChecked():
+            self._apply_pretty_display()
+
+    def _toggle_pretty(self, checked: bool) -> None:
+        if checked:
+            self._apply_pretty_display()
+        else:
+            self._sync_input_display()
+
+    def _sync_input_display(self) -> None:
+        with QtCore.QSignalBlocker(self.input_edit):
+            self.input_edit.setText(self.raw_input)
+
+    def _apply_pretty_display(self) -> None:
+        if not self.raw_input:
+            self._sync_input_display()
+            return
+        pretty = self._format_pretty_text(self.raw_input)
+        with QtCore.QSignalBlocker(self.input_edit):
+            self.input_edit.setText(pretty)
+
+    def _format_pretty_text(self, raw: str) -> str:
+        grouped = format_binary_groups(raw, 4)
+        wrapped = textwrap.wrap(grouped, 48)
+        return "\n".join(wrapped) if wrapped else grouped
 
 
 def launch_qt() -> None:
