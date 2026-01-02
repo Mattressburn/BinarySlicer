@@ -1,6 +1,6 @@
 """Entrypoint for the BinarySlicer application."""
 
-from binaryslicer.ui import main
+from launcher import main
 
 
 if __name__ == "__main__":

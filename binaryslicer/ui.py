@@ -14,18 +14,12 @@ from tkinter import filedialog, messagebox
 import ttkbootstrap as tb
 from ttkbootstrap import ttk
 
-from .diagnostics import build_diagnostics_report
-from .decoder import format_binary_groups, process_input
+from .controller import BinarySlicerController, build_diagnostic_rows
 from .formats import (
     FormatValidationError,
     FormatRepository,
-    NormalizedFormat,
-    extract_fields,
-    find_best_offsets,
     normalize_format_entry,
     validate_format_entry,
-    verify_parity,
-    parity_score,
 )
 from .paths import application_dir, ensure_user_config_dir, user_config_dir
 from .theme import (
@@ -60,6 +54,7 @@ class App:
         self.format_repo = FormatRepository()
         self.formats_doc = self.format_repo.document
         self.formats = self.format_repo.formats
+        self.controller = BinarySlicerController(self.format_repo)
 
         # Layout
         container = ttk.Frame(root, padding=12, style="Panel.TFrame")
@@ -236,6 +231,7 @@ class App:
         self.last_rows_for_csv: list[dict] = []
         self.last_binary_used = ""
         self.last_format_checks: list[dict] = []
+        self.last_result = None
 
         self._apply_theme()
         self._refresh_diagnostics_tree()
@@ -298,6 +294,23 @@ class App:
         self._apply_text_theme(self.summary_text, panel, text, border, mono_font, select, on_select)
         self._apply_text_theme(self.diagnostics_text, panel, text, border, mono_font, select, on_select)
         self._apply_treeview_tags()
+
+    def _apply_result(self, result) -> None:
+        self.last_result = result
+        self.last_binary_used = result.input_binary
+        self.last_rows_for_csv = result.csv_rows
+        self.last_format_checks = result.parity_results
+        self._set_text(self.summary_text, result.summary or "")
+        self._set_text(self.diagnostics_text, result.diagnostics_text or "")
+        self._populate_table(result.table_rows)
+        self._refresh_diagnostics_tree()
+
+    def _populate_table(self, rows) -> None:
+        self.tree.delete(*self.tree.get_children(""))
+        for idx, row in enumerate(rows):
+            tags = ("even",) if idx % 2 == 0 else ("odd",)
+            tags += ("value_mono",)
+            self.tree.insert("", tk.END, values=(row.field, row.range, row.value, row.hex), tags=tags)
 
     def _apply_text_theme(
         self,
@@ -902,207 +915,15 @@ class App:
 
     # ---------------- Calculate / Render ----------------
     def on_calculate(self) -> None:
-        input_data = self.input_entry.get()
-        binary_string, error, input_meta = process_input(input_data)
-        if error:
-            messagebox.showerror("Error", error)
-            return
-        self.last_binary_used = binary_string
-        self._clear_text(self.summary_text)
-        self._clear_text(self.diagnostics_text)
-
-        summary_lines: list[str] = []
-        summary_lines.append(f"Binary ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
-
-        exact, compatible = self._detect_formats(binary_string)
-        diagnostics_context: dict = {
-            "input": input_meta,
-            "exact_matches": [name for name, _ in exact],
-            "compatible_matches": [name for name, _ in compatible],
-            "rendered": [],
-            "auto_candidates": [],
-            "slice_mode": self.slice_mode.get(),
-        }
-
-        if not exact and not compatible:
-            summary_lines.append("No matching formats found.\n")
-            self._set_text(self.summary_text, "".join(summary_lines))
-            self._set_text(self.diagnostics_text, build_diagnostics_report(diagnostics_context))
-            self._refresh_diagnostics_tree()
-            return
-
-        self.last_rows_for_csv = []
-        self.tree.delete(*self.tree.get_children(""))
-        self.last_format_checks = []
-
-        rendered_any = False
-        if exact:
-            summary_lines.append("== Exact bit-length matches ==\n")
-            rendered, diag, chunks = self._render_candidates(binary_string, exact, slice_mode=None)
-            diagnostics_context["rendered"].extend(diag)
-            summary_lines.extend(chunks)
-            rendered_any |= rendered
-
-        if compatible:
-            summary_lines.append("== Compatible (input longer than known format) ==\n")
-            summary_lines.append("These may indicate framing/padding.\n\n")
-            rendered, diag, chunks = self._render_candidates(
-                binary_string,
-                compatible,
-                slice_mode=self.slice_mode.get(),
-            )
-            diagnostics_context["rendered"].extend(diag)
-            summary_lines.extend(chunks)
-            rendered_any |= rendered
-
-        if not rendered_any:
-            summary_lines.append(
-                "No formats passed parity in strict mode.\n"
-                "Tip: Enable 'Show parity failures (diagnostic)' to inspect candidates.\n"
-            )
-
-        self._set_text(self.summary_text, "".join(summary_lines))
-        self._set_text(self.diagnostics_text, build_diagnostics_report(diagnostics_context))
-        self._refresh_diagnostics_tree()
-
-    def _detect_formats(self, binary_string: str):
-        exact = []
-        compatible = []
-        for name, fmt in self.formats.items():
-            L = fmt.bit_length
-            if len(binary_string) == L:
-                exact.append((name, fmt))
-            elif len(binary_string) > L:
-                compatible.append((name, fmt))
-        return exact, compatible
-
-    def _render_candidates(
-        self, binary_string: str, candidates: list[tuple], slice_mode: str | None
-    ) -> tuple[bool, list[dict], list[str]]:
-        if slice_mode == "auto":
-            return self._render_auto_candidates(binary_string, candidates)
-        rendered = False
-        diagnostics: list[dict] = []
-        summaries: list[str] = []
-        for name, fmt in candidates:
-            bit_length = fmt.bit_length
-            if slice_mode is None:
-                use_bits = binary_string
-                display_name = name
-            else:
-                use_bits = binary_string[:bit_length] if slice_mode == "left" else binary_string[-bit_length:]
-                display_name = name + (" (leftmost)" if slice_mode == "left" else " (rightmost)")
-            if not self.show_fails.get() and not self._parity_all_ok(use_bits, fmt):
-                continue
-            summary_block, diag_entry = self._render_format(use_bits, display_name, fmt, {"mode": slice_mode})
-            summaries.append(summary_block)
-            diagnostics.append(diag_entry)
-            rendered = True
-        return rendered, diagnostics, summaries
-
-    def _render_auto_candidates(self, binary_string: str, candidates: list[tuple]) -> tuple[bool, list[dict], list[str]]:
-        rendered = False
-        diagnostics: list[dict] = []
-        summaries: list[str] = []
-        all_results: list[dict] = []
-        for name, fmt in candidates:
-            best = find_best_offsets(binary_string, fmt, step=1, top_n=3)
-            for cand in best:
-                all_results.append({"name": name, "fmt": fmt, "candidate": cand})
-        if not all_results:
-            return False, diagnostics, summaries
-        all_results.sort(key=lambda c: c["candidate"]["score_key"], reverse=True)
-        limit = max(3, min(len(all_results), 10))
-        for entry in all_results[:limit]:
-            cand = entry["candidate"]
-            stats = cand["stats"]
-            parity = cand["parity"]
-            if not self.show_fails.get() and stats["gated_fail"] > 0:
-                continue
-            display_name = (
-                f"{entry['name']} (auto offset +{cand['offset']}, "
-                f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
-            )
-            summary_block, diag_entry = self._render_format(
-                cand["bits"],
-                display_name,
-                entry["fmt"],
-                {"mode": "auto", "offset": cand["offset"], "top_candidates": all_results[:limit]},
-            )
-            summaries.append(summary_block)
-            diagnostics.append(diag_entry)
-            rendered = True
-        return rendered, diagnostics, summaries
-
-    def _render_format(
-        self, binary_string: str, name: str, fmt: NormalizedFormat, meta: dict | None = None
-    ) -> tuple[str, dict]:
-        meta = meta or {}
-        summary_lines: list[str] = [f"Format: {name}\n"]
-        fields = extract_fields(binary_string, fmt)
-        for field, meta in fields.items():
-            if meta.get("hidden"):
-                continue
-            summary_lines.append(
-                f"  {field:14}: {meta['int']} (hex {meta['hex']}), bits[{meta['len']}]={meta['bits']}\n"
-            )
-            start, end = meta["range"]
-            idx = len(self.tree.get_children(""))
-            tags = ("even",) if idx % 2 == 0 else ("odd",)
-            tags += ("value_mono",)
-            self.tree.insert("", tk.END, values=(field, f"{start}–{end}", meta["int"], meta["hex"]), tags=tags)
-            self.last_rows_for_csv.append(
-                {
-                    "Format": name,
-                    "Field": field,
-                    "Value": meta["int"],
-                    "Hex": meta["hex"],
-                    "BitLength": meta["len"],
-                    "Bits": meta["bits"],
-                }
-            )
-        parity = verify_parity(binary_string, fmt)
-        if parity:
-            for result in parity:
-                if result["ok"]:
-                    status = "OK"
-                elif result["ok"] is False:
-                    status = "FAIL"
-                else:
-                    status = "(no parity bit)"
-                note = " (advisory)" if not result.get("gate", True) else ""
-                parity_loc = f"; parity_bit={result.get('parity_bit')}" if result.get("parity_bit") is not None else ""
-                summary_lines.append(
-                    f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status}{note} "
-                    f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']}{parity_loc})\n"
-                )
-            self.last_format_checks = parity
-        summary_lines.append("\n")
-        return "\n".join(summary_lines), {
-            "name": name,
-            "bit_length": len(binary_string),
-            "parity": parity,
-            "parity_stats": parity_score(parity) if parity else None,
-            "meta": meta,
-        }
-
-    def _parity_all_ok(self, binary_string: str, fmt: NormalizedFormat) -> bool:
-        parity = verify_parity(binary_string, fmt)
-        if not parity:
-            return True
-        for result in parity:
-            if result.get("gate", True) and result.get("ok") is False:
-                return False
-        return True
-
-    def _diagnostic_status(self, result: dict) -> tuple[str, str]:
-        ok = result.get("ok")
-        gate = result.get("gate", True)
-        if ok is True:
-            return "OK", "status_ok"
-        if ok is False:
-            return ("FAIL" if gate else "Advisory"), ("status_fail" if gate else "status_warn")
-        return "Not evaluated", "status_neutral"
+        result = self.controller.analyze_input(
+            self.input_entry.get(),
+            slice_mode=self.slice_mode.get(),
+            show_parity_failures=self.show_fails.get(),
+        )
+        if result.error and not result.ok:
+            messagebox.showerror("Error", result.error)
+        self._apply_result(result)
+        self.status.configure(text=f"Formats loaded: {len(self.formats)} | Config: {user_config_dir()}")
 
     def _refresh_diagnostics_tree(self) -> None:
         if not hasattr(self, "diagnostics_tree"):
@@ -1110,45 +931,15 @@ class App:
         self.diagnostics_tree.delete(*self.diagnostics_tree.get_children(""))
 
         show_all = self.show_fails.get()
-        rows = self.last_format_checks or []
-        if not rows:
+        rows = build_diagnostic_rows(self.last_format_checks, show_all=show_all)
+        for idx, row in enumerate(rows):
+            tags = ("even",) if idx % 2 == 0 else ("odd",)
+            tags += (row.status_tag,)
             self.diagnostics_tree.insert(
                 "",
                 tk.END,
-                values=("No parity checks", "", "Not evaluated", "", "", "", "", ""),
-                tags=("status_neutral",),
-            )
-            return
-
-        visible_idx = 0
-        for result in rows:
-            if not show_all and result.get("ok") is not False:
-                continue
-            coverage = result.get("coverage") or ("?", "?")
-            coverage_text = f"{coverage[0]}–{coverage[1]}"
-            status_text, status_tag = self._diagnostic_status(result)
-            parity_bit = result.get("parity_bit")
-            values = (
-                result.get("label") or result.get("type", ""),
-                coverage_text,
-                status_text,
-                result.get("expected", ""),
-                result.get("actual", ""),
-                result.get("data_len", ""),
-                "-" if parity_bit is None else parity_bit,
-                "Yes" if result.get("gate", True) else "Advisory",
-            )
-            row_tags = ("even",) if visible_idx % 2 == 0 else ("odd",)
-            row_tags += (status_tag,)
-            self.diagnostics_tree.insert("", tk.END, values=values, tags=row_tags)
-            visible_idx += 1
-
-        if visible_idx == 0:
-            self.diagnostics_tree.insert(
-                "",
-                tk.END,
-                values=("No parity failures to show", "", "OK", "", "", "", "", ""),
-                tags=("status_neutral",),
+                values=(row.type, row.coverage, row.status, row.expected, row.actual, row.data_len, row.parity_bit, row.gate),
+                tags=tags,
             )
 
     # ---------------- Copy / Export ----------------

@@ -8,9 +8,14 @@ modifying the source code.
 
 ```bash
 python "Binary Slicer.py"
+# or
+python launcher.py --qt   # PySide6/Qt UI
 ```
 
-The script launches the Tkinter UI from the `binaryslicer.ui` module. When building a frozen
+The default launch uses the Tkinter UI from the `binaryslicer.ui` module. Add `--qt` to use the
+new PySide6/Qt interface (requires the `PySide6` package).
+
+When building a frozen
 executable (e.g. with PyInstaller) include the `binaryslicer/`, `icons/`, and `config/` directories
 so the runtime resources are available.
 
