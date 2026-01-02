@@ -77,7 +77,7 @@ class App:
         toolbar.columnconfigure(1, weight=1)
 
         ttk.Label(toolbar, text="Input", style="Muted.TLabel").grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
-        self.input_entry = ttk.Entry(toolbar, width=64)
+        self.input_entry = ttk.Entry(toolbar, width=64, style="Input.TEntry")
         self.input_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
 
         self.btn_calc = ttk.Button(toolbar, text="Calculate", bootstyle="primary", command=self.on_calculate)
@@ -255,16 +255,17 @@ class App:
             bordercolor=[("focus", info)],
         )
 
-        select_opts = {"selectbackground": select, "selectforeground": on_select}
-        self.input_entry.configure(
+        # Style for the input entry (ttk.Entry uses styles, not insertbackground/selectbackground options)
+        self.style.configure(
+            "Input.TEntry",
+            fieldbackground=panel2,
             foreground=text,
-            insertbackground=text,
-            **select_opts,
+            padding=(8, 6),
         )
-        self.root.option_add("*TEntry*selectBackground", select)
-        self.root.option_add("*TEntry*selectForeground", on_select)
-        self.root.option_add("*TEntry*insertColor", text)
-        self.root.option_add("*TEntry*foreground", text)
+
+        # Apply the style to the existing entry widget
+        self.input_entry.configure(style="Input.TEntry")
+
 
         self._apply_text_theme(self.summary_text, panel, text, border, mono_font, select, on_select)
         self._apply_text_theme(self.details_text, panel, text, border, mono_font, select, on_select)
