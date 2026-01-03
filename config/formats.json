@@ -574,8 +574,10 @@
           "type": "odd",
           "per_character": true,
           "character_width": 5,
-          "parity_position": "lsb",
-          "gate": false
+          "parity_position": "msb",
+          "start": 0,
+          "end": 199,
+          "gate": true
         }
       ]
     },
