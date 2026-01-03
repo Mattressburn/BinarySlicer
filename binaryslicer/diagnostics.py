@@ -25,11 +25,24 @@ def _format_selection_section(context: Mapping) -> str:
     exact = context.get("exact_matches") or []
     compatible = context.get("compatible_matches") or []
     slice_mode = context.get("slice_mode")
+    winner = context.get("winner") or {}
+    parity_stats = winner.get("parity_stats") or {}
+    gating_present = parity_stats.get("gating_present", False)
+    gated_fail = parity_stats.get("gated_fail", 0)
+    gated_pass = parity_stats.get("gated_pass", 0)
     lines = ["Format selection:\n"]
     lines.append(f"  Exact bit-length matches: {', '.join(exact) if exact else 'none'}\n")
     lines.append(f"  Compatible matches: {', '.join(compatible) if compatible else 'none'}\n")
     if slice_mode:
         lines.append(f"  Compatible slicing mode: {slice_mode}\n")
+    if winner:
+        match_type = winner.get("match_type") or "candidates"
+        reason = "exact-length priority" if match_type == "exact" else "compatible fallback"
+        if gating_present:
+            parity_note = f"gated parity: fail={gated_fail}, pass={gated_pass}"
+        else:
+            parity_note = "parity: no gated checks"
+        lines.append(f"  Winner: {winner.get('name','(unknown)')} ({reason}; {parity_note})\n")
     return "".join(lines) + "\n"
 
 

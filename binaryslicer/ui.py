@@ -992,7 +992,8 @@ class App:
             else:
                 use_bits = binary_string[:bit_length] if slice_mode == "left" else binary_string[-bit_length:]
                 display_name = name + (" (leftmost)" if slice_mode == "left" else " (rightmost)")
-            if not self.show_fails.get() and not self._parity_all_ok(use_bits, fmt):
+            parity_all_ok = self._parity_all_ok(use_bits, fmt)
+            if slice_mode is not None and (not self.show_fails.get()) and not parity_all_ok:
                 continue
             summary_block, diag_entry = self._render_format(use_bits, display_name, fmt, {"mode": slice_mode})
             summaries.append(summary_block)

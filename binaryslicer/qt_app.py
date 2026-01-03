@@ -416,10 +416,12 @@ class QtMainWindow(QtWidgets.QMainWindow):
         return self.tokens.get("muted", "#9aa0ad")
 
     def _parity_status_text(self, result: AnalysisResult) -> tuple[str, str]:
-        if result.parity_ok is True:
-            return "Parity OK", self.tokens.get("ok", "#29B582")
-        if result.parity_ok is False:
-            return "Parity issues", self.tokens.get("error", "#E2555D")
+        stats = result.parity_stats or {}
+        if stats.get("gating_present"):
+            fail_count = stats.get("gated_fail", 0)
+            if fail_count == 0:
+                return "Parity OK", self.tokens.get("ok", "#29B582")
+            return f"Parity FAIL ({fail_count})", self.tokens.get("error", "#E2555D")
         return "Parity —", self.tokens.get("muted", "#9aa0ad")
 
     @staticmethod
