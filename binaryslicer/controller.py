@@ -59,6 +59,7 @@ class AnalysisResult:
     parity_stats: Dict[str, int] = field(default_factory=dict)
     best_offset: Optional[int] = None
     best_format: Optional[str] = None
+    selection_source: Optional[str] = None
     slice_mode: Optional[str] = None
     bit_length: int = 0
 
@@ -92,6 +93,7 @@ class Controller:
             "rendered": [],
             "auto_candidates": [],
             "slice_mode": slice_mode,
+            "winner": {},
         }
 
         if not exact and not compatible:
@@ -101,6 +103,7 @@ class Controller:
             return result
 
         diag_entries: List[Dict] = []
+        rendered_entries: List[Dict] = []
         parity_rows_map: Dict[str, List[ParityRow]] = {}
         rendered_any = False
 
@@ -110,12 +113,13 @@ class Controller:
                 binary_string, exact, None, show_parity_failures, match_type="exact"
             )
             if rendered:
-                diag_entries.extend(diag_list)
+                rendered_entries.extend([entry for entry in diag_list if (entry.get("meta") or {}).get("rendered")])
                 summary_lines.extend(chunks)
                 result.csv_rows.extend(csv_rows)
                 result.table_rows.extend(table_rows)
-                parity_rows_map.update(parity_map)
                 rendered_any = True
+            diag_entries.extend(diag_list)
+            parity_rows_map.update(parity_map)
 
         if compatible:
             summary_lines.append("== Compatible (input longer than known format) ==\n")
@@ -124,12 +128,13 @@ class Controller:
                 binary_string, compatible, slice_mode, show_parity_failures, match_type="compatible"
             )
             if rendered:
-                diag_entries.extend(diag_list)
+                rendered_entries.extend([entry for entry in diag_list if (entry.get("meta") or {}).get("rendered")])
                 summary_lines.extend(chunks)
                 result.csv_rows.extend(csv_rows)
                 result.table_rows.extend(table_rows)
-                parity_rows_map.update(parity_map)
                 rendered_any = True
+            diag_entries.extend(diag_list)
+            parity_rows_map.update(parity_map)
 
         if not rendered_any:
             summary_lines.append(
@@ -137,12 +142,7 @@ class Controller:
                 "Tip: enable parity diagnostics to inspect gated failures.\n"
             )
 
-        diagnostics_context["rendered"].extend(diag_entries)
-        result.formats_rendered = [entry.get("name") for entry in diag_entries if entry.get("name")]
-        result.summary = "".join(summary_lines)
-        result.diagnostics_text = build_diagnostics_report(diagnostics_context)
-
-        best_entry = self._pick_best_entry(diag_entries)
+        best_entry, selection_source = self._pick_best_entry(diag_entries)
         if best_entry:
             parity = best_entry.get("parity") or []
             stats = parity_score(parity)
@@ -150,10 +150,22 @@ class Controller:
             result.parity_ok = stats["gated_fail"] == 0 if stats["gating_present"] else None
             result.best_offset = best_entry.get("meta", {}).get("offset")
             result.best_format = best_entry.get("format")
+            result.selection_source = selection_source
             parity_rows = parity_rows_map.get(best_entry["name"], [])
             if not show_parity_failures:
                 parity_rows = [row for row in parity_rows if row.ok is False]
             result.parity_rows = parity_rows or parity_rows_map.get(best_entry["name"], [])
+
+            diagnostics_context["winner"] = {
+                "name": best_entry.get("format") or best_entry.get("name"),
+                "match_type": selection_source,
+                "parity_stats": stats,
+            }
+
+        diagnostics_context["rendered"].extend(rendered_entries)
+        result.formats_rendered = [entry.get("name") for entry in rendered_entries if entry.get("name")]
+        result.summary = "".join(summary_lines)
+        result.diagnostics_text = build_diagnostics_report(diagnostics_context)
 
         return result
 
@@ -179,6 +191,7 @@ class Controller:
     ) -> Tuple[bool, List[Dict], List[str], List[Dict], List[TableRow], Dict[str, List[ParityRow]]]:
         rendered = False
         diagnostics: List[Dict] = []
+        all_entries: List[Dict] = []
         summaries: List[str] = []
         csv_rows: List[Dict] = []
         table_rows: List[TableRow] = []
@@ -191,8 +204,6 @@ class Controller:
 
         for name, fmt in candidates:
             use_bits, display_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, name)
-            if not show_parity_failures and not self._parity_all_ok(use_bits, fmt):
-                continue
             summary_block, diag_entry, rows, csv_data, parity_rows = self._render_format(
                 use_bits,
                 display_name,
@@ -200,14 +211,25 @@ class Controller:
                 {"mode": slice_mode, "match": match_type},
                 format_name=name,
             )
+            meta = dict(diag_entry.get("meta") or {})
+            meta.update({"mode": slice_mode, "match": match_type})
+            diag_entry["meta"] = meta
+            parity_rows_map[diag_entry["name"]] = parity_rows
+            all_entries.append(diag_entry)
+
+            stats = diag_entry.get("parity_stats") or {}
+            should_render = show_parity_failures or match_type == "exact" or stats.get("gated_fail", 0) == 0
+            diag_entry["meta"]["rendered"] = bool(should_render)
+            if not should_render:
+                continue
+
             summaries.append(summary_block)
             diagnostics.append(diag_entry)
             csv_rows.extend(csv_data)
             table_rows.extend(rows)
-            parity_rows_map[diag_entry["name"]] = parity_rows
             rendered = True
 
-        return rendered, diagnostics, summaries, csv_rows, table_rows, parity_rows_map
+        return rendered, all_entries, summaries, csv_rows, table_rows, parity_rows_map
 
     def _render_auto_candidates(
         self,
@@ -219,6 +241,7 @@ class Controller:
     ) -> Tuple[bool, List[Dict], List[str], List[Dict], List[TableRow], Dict[str, List[ParityRow]]]:
         rendered = False
         diagnostics: List[Dict] = []
+        all_entries: List[Dict] = []
         summaries: List[str] = []
         csv_rows: List[Dict] = []
         table_rows: List[TableRow] = []
@@ -239,8 +262,6 @@ class Controller:
             cand = entry["candidate"]
             stats = cand["stats"]
             parity = cand["parity"]
-            if not show_parity_failures and stats["gated_fail"] > 0:
-                continue
             display_name = (
                 f"{entry['name']} (auto offset +{cand['offset']}, "
                 f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
@@ -257,14 +278,24 @@ class Controller:
                 },
                 format_name=entry["name"],
             )
+            meta = dict(diag_entry.get("meta") or {})
+            meta.update({"mode": "auto", "offset": cand["offset"], "match": match_type})
+            diag_entry["meta"] = meta
+            parity_rows_map[diag_entry["name"]] = parity_rows
+            all_entries.append(diag_entry)
+
+            should_render = show_parity_failures or stats["gated_fail"] == 0
+            diag_entry["meta"]["rendered"] = bool(should_render)
+            if not should_render:
+                continue
+
             summaries.append(summary_block)
             diagnostics.append(diag_entry)
             csv_rows.extend(csv_data)
             table_rows.extend(rows)
-            parity_rows_map[diag_entry["name"]] = parity_rows
             rendered = True
 
-        return rendered, diagnostics, summaries, csv_rows, table_rows, parity_rows_map
+        return rendered, all_entries, summaries, csv_rows, table_rows, parity_rows_map
 
     @staticmethod
     def _slice_bits(bits: str, width: int, mode: Optional[str], name: str) -> Tuple[str, str]:
@@ -361,9 +392,9 @@ class Controller:
         return rows
 
     @staticmethod
-    def _pick_best_entry(entries: Sequence[Mapping]) -> Optional[Mapping]:
+    def _pick_best_entry(entries: Sequence[Mapping]) -> Tuple[Optional[Mapping], Optional[str]]:
         if not entries:
-            return None
+            return None, None
 
         def score(entry: Mapping) -> Tuple:
             stats = entry.get("parity_stats") or {}
@@ -373,7 +404,9 @@ class Controller:
             return (entry.get("meta") or {}).get("match")
 
         exact_entries = [entry for entry in entries if match(entry) == "exact"]
-        pool = exact_entries or list(entries)
+        compatible_entries = [entry for entry in entries if match(entry) == "compatible"]
+        pool = exact_entries or compatible_entries
+        source = "exact" if exact_entries else "compatible" if compatible_entries else None
 
         gated_ok = [
             entry
@@ -384,7 +417,7 @@ class Controller:
         if gated_ok:
             pool = gated_ok
 
-        return max(pool, key=score)
+        return (max(pool, key=score), source) if pool else (None, None)
 
 
 __all__ = ["Controller", "AnalysisResult", "TableRow", "ParityRow"]
