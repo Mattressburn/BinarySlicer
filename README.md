@@ -6,16 +6,16 @@ without modifying the source code.
 
 ## Running the application
 
-Launch the Tkinter UI (default):
+Launch the PySide6/Qt UI (default):
 
 ```bash
 python launcher.py
 ```
 
-Launch the PySide6/Qt UI:
+Launch the legacy Tkinter UI:
 
 ```bash
-python launcher.py --qt
+python launcher.py --tk
 ```
 
 When building a frozen executable (e.g. with PyInstaller) include the `binaryslicer/`, `icons/`, and

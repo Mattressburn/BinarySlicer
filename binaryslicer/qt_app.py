@@ -101,9 +101,17 @@ class QtMainWindow(QtWidgets.QMainWindow):
             layout.addWidget(dot)
         return layout
 
+    def _add_shadow(self, widget: QtWidgets.QWidget, *, blur: float = 22.0, y_offset: float = 4.0, opacity: int = 76) -> None:
+        effect = QtWidgets.QGraphicsDropShadowEffect(self)
+        effect.setBlurRadius(blur)
+        effect.setOffset(0, y_offset)
+        effect.setColor(QtGui.QColor(0, 0, 0, opacity))
+        widget.setGraphicsEffect(effect)
+
     def _build_toolbar(self) -> QtWidgets.QWidget:
         frame = QtWidgets.QFrame()
         frame.setObjectName("Toolbar")
+        self.toolbar_frame = frame
         layout = QtWidgets.QHBoxLayout(frame)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
@@ -141,11 +149,13 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.theme_button.clicked.connect(self.toggle_theme)
         layout.addWidget(self.theme_button)
 
+        self._add_shadow(frame)
         return frame
 
     def _build_options_bar(self) -> QtWidgets.QWidget:
         frame = QtWidgets.QFrame()
         frame.setObjectName("OptionsBar")
+        self.options_frame = frame
         layout = QtWidgets.QHBoxLayout(frame)
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(8)
@@ -171,6 +181,11 @@ class QtMainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.left_chip)
         layout.addWidget(self.right_chip)
 
+        self.reverse_chip = PillButton("Reverse bit order", checkable=True)
+        self.reverse_chip.setToolTip("Use reversed working bits for detection, slicing, and parity checks.")
+        self.reverse_chip.toggled.connect(self.calculate)
+        layout.addWidget(self.reverse_chip)
+
         self.offset_badge = QtWidgets.QLabel("Offset: —")
         self.offset_badge.setObjectName("ChipBadge")
         layout.addWidget(self.offset_badge)
@@ -185,6 +200,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.pretty_chip)
 
         layout.addStretch()
+        self._add_shadow(frame)
         return frame
 
     def _build_summary_card(self) -> QtWidgets.QWidget:
@@ -307,6 +323,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
             raw_value,
             slice_mode=slice_mode,
             show_parity_failures=self.diagnostics_chip.isChecked(),
+            reverse_bits=self.reverse_chip.isChecked(),
         )
         self._apply_result(result)
 
