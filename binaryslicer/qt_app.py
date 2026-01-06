@@ -12,6 +12,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from .controller import AnalysisResult, Controller, ParityRow, TableRow
 from .decoder import format_binary_groups
+from .history import HistoryBuffer
 from .paths import application_dir
 from .qt_theme import QtThemeManager, build_qss
 
@@ -55,8 +56,8 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.mono_font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
         self.theme_dots: List[QtWidgets.QFrame] = []
         self.raw_input: str = ""
-        self.history: List[dict] = []
         self.max_history = 10
+        self.history = HistoryBuffer(self.max_history)
 
         self._build_ui()
         self.apply_theme()
@@ -353,14 +354,14 @@ class QtMainWindow(QtWidgets.QMainWindow):
 
         raw_value = self.raw_input or self._normalize_input(self.input_edit.text())
 
-        forced_format = self.format_combo.currentData()
+        forced_format_id = self.format_combo.currentData()
 
         result = self.controller.analyze_input(
             raw_value,
             slice_mode=slice_mode,
             show_parity_failures=self.diagnostics_chip.isChecked(),
             reverse_bits=self.reverse_chip.isChecked(),
-            forced_format=forced_format,
+            forced_format_id=forced_format_id,
         )
         self._apply_result(result)
 
@@ -418,11 +419,13 @@ class QtMainWindow(QtWidgets.QMainWindow):
             offset_text = f"{result.slice_mode.title()} mode"
         self.offset_badge.setText(offset_text)
 
-        format_status = "(forced)" if result.forced_format else "auto"
+        format_status = "(forced)" if result.forced_format_id else "auto"
         if result.best_format:
             status = f"Parsed OK ({result.bit_length} bits). Format: {result.best_format} [{format_status}]"
         else:
             status = f"Parsed OK ({result.bit_length} bits). Format: (none passed parity)"
+        if result.status_message:
+            status = f"{status} — {result.status_message}"
         self.status_label.setText(status)
         self._add_history_entry(result)
 
@@ -581,8 +584,8 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.format_combo.blockSignals(True)
         self.format_combo.clear()
         self.format_combo.addItem("Auto-detect", None)
-        for name, bitlen in self.controller.list_formats():
-            self.format_combo.addItem(f"{name} ({bitlen}b)", name)
+        for fmt_id, display_name, bitlen in self.controller.list_formats():
+            self.format_combo.addItem(f"{display_name} ({bitlen}b)", fmt_id)
         comp = self.format_combo.completer()
         comp.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         comp.setFilterMode(QtCore.Qt.MatchContains)
@@ -594,6 +597,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.calculate()
 
     def _reset_history_combo(self) -> None:
+        self.history = HistoryBuffer(self.max_history)
         self.history_combo.blockSignals(True)
         self.history_combo.clear()
         self.history_combo.addItem("History", None)
@@ -603,31 +607,24 @@ class QtMainWindow(QtWidgets.QMainWindow):
         bits = result.input_meta.get("normalized_bits") or ""
         if not bits:
             return
-        parity = "OK" if result.parity_ok else "FAIL" if result.parity_ok is False else "—"
-        format_label = result.best_format or "Unknown"
-        if result.forced_format:
-            format_label += " (forced)"
-        display_bits = format_binary_groups(bits, 4)
-        compact = display_bits if len(display_bits) <= 48 else display_bits[:48] + "…"
-        label = f"{compact} · {format_label} · Parity {parity}"
-
-        entry = {
-            "raw_bits": bits,
-            "forced_format": result.forced_format,
-            "label": label,
-        }
-        # Deduplicate by raw bits and forced format
-        self.history = [e for e in self.history if not (e["raw_bits"] == bits and e["forced_format"] == result.forced_format)]
-        self.history.insert(0, entry)
-        self.history = self.history[: self.max_history]
-        self._refresh_history_combo()
+        entry = self.history.add(
+            raw_bits=bits,
+            bit_length=result.bit_length,
+            format_name=result.best_format or "Unknown",
+            format_id=result.best_format_id,
+            forced_format_id=result.forced_format_id,
+            reverse_bits=result.input_meta.get("reverse_bits", False),
+            parity_ok=result.parity_ok,
+        )
+        if entry:
+            self._refresh_history_combo()
 
     def _refresh_history_combo(self) -> None:
         self.history_combo.blockSignals(True)
         self.history_combo.clear()
         self.history_combo.addItem("History", None)
-        for entry in self.history:
-            self.history_combo.addItem(entry["label"], entry)
+        for entry in self.history.entries:
+            self.history_combo.addItem(entry.label, entry)
         # keep placeholder selected
         self.history_combo.setCurrentIndex(0)
         self.history_combo.blockSignals(False)
@@ -636,11 +633,15 @@ class QtMainWindow(QtWidgets.QMainWindow):
         entry = self.history_combo.itemData(index)
         if not entry:
             return
-        raw_bits = entry.get("raw_bits", "")
+        raw_bits = entry.raw_bits
         self.raw_input = raw_bits
         with QtCore.QSignalBlocker(self.input_edit):
             self.input_edit.setText(self._format_pretty_text(raw_bits) if self.pretty_chip.isChecked() else raw_bits)
-        forced = entry.get("forced_format")
+
+        with QtCore.QSignalBlocker(self.reverse_chip):
+            self.reverse_chip.setChecked(entry.reverse_bits)
+
+        forced = entry.forced_format_id
         target_index = 0
         for i in range(self.format_combo.count()):
             if self.format_combo.itemData(i) == forced:

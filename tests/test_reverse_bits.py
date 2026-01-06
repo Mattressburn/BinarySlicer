@@ -17,6 +17,7 @@ def _make_repo():
     class DummyRepo:
         def __init__(self, format_entry):
             self.formats = {"TestFrame": format_entry}
+            self.formats_by_id = {format_entry.format_id: format_entry}
 
     return DummyRepo(fmt)
 

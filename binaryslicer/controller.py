@@ -60,10 +60,12 @@ class AnalysisResult:
     parity_stats: Dict[str, int] = field(default_factory=dict)
     best_offset: Optional[int] = None
     best_format: Optional[str] = None
+    best_format_id: Optional[str] = None
     selection_source: Optional[str] = None
     slice_mode: Optional[str] = None
     bit_length: int = 0
-    forced_format: Optional[str] = None
+    forced_format_id: Optional[str] = None
+    status_message: Optional[str] = None
 
 
 class Controller:
@@ -79,7 +81,7 @@ class Controller:
         slice_mode: str = "auto",
         show_parity_failures: bool = False,
         reverse_bits: bool = False,
-        forced_format: Optional[str] = None,
+        forced_format_id: Optional[str] = None,
     ) -> AnalysisResult:
         """Normalize input, select formats, and render results."""
 
@@ -90,16 +92,20 @@ class Controller:
                 "bit_order": "reversed" if reverse_bits else "normal",
             }
         )
-        result = AnalysisResult(error=error, input_meta=input_meta, slice_mode=slice_mode, forced_format=forced_format)
+        result = AnalysisResult(
+            error=error, input_meta=input_meta, slice_mode=slice_mode, forced_format_id=forced_format_id
+        )
         if error or not binary_string:
             return result
 
         forced_candidate: Optional[Tuple[str, NormalizedFormat]] = None
-        if forced_format:
-            forced_candidate = self._resolve_forced_format(forced_format)
+        if forced_format_id:
+            forced_candidate = self._resolve_forced_format(forced_format_id)
             if not forced_candidate:
-                result.error = f"Format '{forced_format}' is not available."
-                return result
+                result.status_message = f"Format '{forced_format_id}' is not available. Falling back to auto-detect."
+                forced_format_id = None
+            else:
+                result.forced_format_id = forced_candidate[0]
 
         working_bits = binary_string[::-1] if reverse_bits else binary_string
         input_meta["normalized_bits"] = binary_string
@@ -114,6 +120,13 @@ class Controller:
             exact, compatible = self._detect_formats(working_bits)
 
         summary_lines: List[str] = []
+        selection_label = "Auto-detect"
+        if forced_candidate:
+            selection_label = f"Forced format: {forced_candidate[1].name}"
+        elif result.status_message:
+            selection_label = f"Auto-detect (fallback)"
+
+        summary_lines.append(f"Selection: {selection_label}\n")
         summary_lines.append(f"Bit order: {input_meta['bit_order']}\n")
         if reverse_bits:
             summary_lines.append(f"Raw bits ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
@@ -125,8 +138,8 @@ class Controller:
 
         diagnostics_context: Dict = {
             "input": input_meta,
-            "exact_matches": [name for name, _ in exact],
-            "compatible_matches": [name for name, _ in compatible],
+            "exact_matches": [fmt.name for _, fmt in exact],
+            "compatible_matches": [fmt.name for _, fmt in compatible],
             "rendered": [],
             "auto_candidates": [],
             "slice_mode": slice_mode,
@@ -193,9 +206,11 @@ class Controller:
             result.parity_ok = stats["gated_fail"] == 0 if stats["gating_present"] else None
             result.best_offset = best_entry.get("meta", {}).get("offset")
             result.best_format = best_entry.get("format")
+            result.best_format_id = best_entry.get("format_id")
             result.selection_source = "forced" if forced_candidate else selection_source
             if forced_candidate:
-                result.best_format = forced_candidate[0]
+                result.best_format = forced_candidate[1].name
+                result.best_format_id = forced_candidate[0]
             parity_rows = parity_rows_map.get(best_entry["name"], [])
             if not show_parity_failures:
                 parity_rows = [row for row in parity_rows if row.ok is False]
@@ -214,26 +229,31 @@ class Controller:
 
         return result
 
-    def list_formats(self) -> List[Tuple[str, int]]:
-        return sorted([(name, fmt.bit_length) for name, fmt in self.repo.formats.items()], key=lambda x: x[0].lower())
+    def list_formats(self) -> List[Tuple[str, str, int]]:
+        """Return available formats as (id, display_name, bit_length), sorted by display name."""
 
-    def _resolve_forced_format(self, name: str) -> Optional[Tuple[str, NormalizedFormat]]:
-        if name in self.repo.formats:
-            return name, self.repo.formats[name]
-        for fmt_name, fmt in self.repo.formats.items():
-            if fmt_name.lower() == name.lower():
-                return fmt_name, fmt
+        entries: List[Tuple[str, str, int]] = []
+        for fmt_id, fmt in self.repo.formats_by_id.items():
+            entries.append((fmt_id, fmt.name, fmt.bit_length))
+        return sorted(entries, key=lambda x: x[1].lower())
+
+    def _resolve_forced_format(self, fmt_id: str) -> Optional[Tuple[str, NormalizedFormat]]:
+        for candidate_id, fmt in self.repo.formats_by_id.items():
+            if candidate_id == fmt_id or candidate_id.lower() == fmt_id.lower():
+                return candidate_id, fmt
+            if fmt.name.lower() == fmt_id.lower():
+                return candidate_id, fmt
         return None
 
     def _detect_formats(self, binary_string: str) -> Tuple[List[Tuple[str, NormalizedFormat]], List[Tuple[str, NormalizedFormat]]]:
         exact: List[Tuple[str, NormalizedFormat]] = []
         compatible: List[Tuple[str, NormalizedFormat]] = []
-        for name, fmt in self.repo.formats.items():
+        for fmt_id, fmt in self.repo.formats_by_id.items():
             length = fmt.bit_length
             if len(binary_string) == length:
-                exact.append((name, fmt))
+                exact.append((fmt_id, fmt))
             elif len(binary_string) > length:
-                compatible.append((name, fmt))
+                compatible.append((fmt_id, fmt))
         return exact, compatible
 
     def _render_candidates(
@@ -258,18 +278,19 @@ class Controller:
                 binary_string, candidates, show_parity_failures, match_type=match_type
             )
 
-        for name, fmt in candidates:
-            use_bits, display_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, name)
+        for fmt_id, fmt in candidates:
+            use_bits, display_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, fmt.name)
             summary_block, diag_entry, rows, csv_data, parity_rows = self._render_format(
                 use_bits,
                 display_name,
                 fmt,
                 {"mode": slice_mode, "match": match_type},
-                format_name=name,
+                format_name=fmt.name,
             )
             meta = dict(diag_entry.get("meta") or {})
             meta.update({"mode": slice_mode, "match": match_type})
             diag_entry["meta"] = meta
+            diag_entry["format_id"] = fmt_id
             parity_rows_map[diag_entry["name"]] = parity_rows
             all_entries.append(diag_entry)
 
@@ -304,10 +325,10 @@ class Controller:
         parity_rows_map: Dict[str, List[ParityRow]] = {}
         all_results: List[Dict] = []
 
-        for name, fmt in candidates:
+        for fmt_id, fmt in candidates:
             best = find_best_offsets(binary_string, fmt, step=1, top_n=3)
             for candidate in best:
-                all_results.append({"name": name, "fmt": fmt, "candidate": candidate})
+                all_results.append({"name": fmt.name, "fmt": fmt, "candidate": candidate, "format_id": fmt_id})
 
         if not all_results:
             return False, diagnostics, summaries, csv_rows, table_rows, parity_rows_map
@@ -337,6 +358,7 @@ class Controller:
             meta = dict(diag_entry.get("meta") or {})
             meta.update({"mode": "auto", "offset": cand["offset"], "match": match_type})
             diag_entry["meta"] = meta
+            diag_entry["format_id"] = entry["format_id"]
             parity_rows_map[diag_entry["name"]] = parity_rows
             all_entries.append(diag_entry)
 
@@ -429,6 +451,7 @@ class Controller:
         return "\n".join(summary_lines), {
             "name": name,
             "format": format_name or name,
+            "format_id": fmt.format_id,
             "bit_length": len(binary_string),
             "parity": parity,
             "parity_stats": parity_score(parity or []),
