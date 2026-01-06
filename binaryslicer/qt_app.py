@@ -55,6 +55,8 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.mono_font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
         self.theme_dots: List[QtWidgets.QFrame] = []
         self.raw_input: str = ""
+        self.history: List[dict] = []
+        self.max_history = 10
 
         self._build_ui()
         self.apply_theme()
@@ -90,6 +92,9 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.status_label.setObjectName("Muted")
         layout.addWidget(self.status_label)
 
+        self._populate_format_combo()
+        self._reset_history_combo()
+
     def _build_theme_indicators(self) -> QtWidgets.QHBoxLayout:
         layout = QtWidgets.QHBoxLayout()
         layout.setSpacing(6)
@@ -117,7 +122,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
         layout.setSpacing(10)
 
         label = QtWidgets.QLabel("Input")
-        label.setObjectName("Muted")
+        label.setProperty("role", "muted")
         layout.addWidget(label)
 
         self.input_edit = ScrollingLineEdit()
@@ -128,6 +133,30 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.input_edit.returnPressed.connect(self.calculate)
         self.input_edit.textEdited.connect(self._handle_input_edited)
         layout.addWidget(self.input_edit, stretch=1)
+
+        format_label = QtWidgets.QLabel("Format")
+        format_label.setProperty("role", "muted")
+        layout.addWidget(format_label)
+
+        self.format_combo = QtWidgets.QComboBox()
+        self.format_combo.setEditable(True)
+        self.format_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.format_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.format_combo.setMinimumWidth(180)
+        self.format_combo.setToolTip("Force a specific format or leave on Auto-detect.")
+        self.format_combo.currentIndexChanged.connect(self._handle_format_changed)
+        layout.addWidget(self.format_combo)
+
+        history_label = QtWidgets.QLabel("History")
+        history_label.setProperty("role", "muted")
+        layout.addWidget(history_label)
+
+        self.history_combo = QtWidgets.QComboBox()
+        self.history_combo.setMinimumWidth(180)
+        self.history_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.history_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.history_combo.activated.connect(self._load_history_entry)
+        layout.addWidget(self.history_combo)
 
         self.calc_button = QtWidgets.QPushButton("Calculate")
         self.calc_button.setObjectName("PrimaryButton")
@@ -161,7 +190,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
         layout.setSpacing(8)
 
         label = QtWidgets.QLabel("Options")
-        label.setObjectName("Muted")
+        label.setProperty("role", "muted")
         layout.addWidget(label)
 
         self.diagnostics_chip = PillButton("Parity diagnostics", checkable=True)
@@ -248,6 +277,9 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.table_view.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self.table_view.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
         self.table_view.verticalHeader().setVisible(False)
+        self.table_view.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.table_view.clicked.connect(self._copy_table_row_default)
+        self.table_view.customContextMenuRequested.connect(self._show_table_context_menu)
         table_layout.addWidget(self.table_view, stretch=1)
 
         self.tabs.addTab(self.table_tab, "Table")
@@ -319,11 +351,14 @@ class QtMainWindow(QtWidgets.QMainWindow):
 
         raw_value = self.raw_input or self._normalize_input(self.input_edit.text())
 
+        forced_format = self.format_combo.currentData()
+
         result = self.controller.analyze_input(
             raw_value,
             slice_mode=slice_mode,
             show_parity_failures=self.diagnostics_chip.isChecked(),
             reverse_bits=self.reverse_chip.isChecked(),
+            forced_format=forced_format,
         )
         self._apply_result(result)
 
@@ -357,14 +392,13 @@ class QtMainWindow(QtWidgets.QMainWindow):
 
         if result.error:
             self.input_edit.setProperty("error", True)
-            self.input_edit.style().unpolish(self.input_edit)
-            self.input_edit.style().polish(self.input_edit)
-            QtWidgets.QMessageBox.critical(self, "Error", result.error)
+            self._repolish_input()
+            self.status_label.setText(f"Invalid input: {result.error}")
+            self._clear_results()
             return
 
         self.input_edit.setProperty("error", False)
-        self.input_edit.style().unpolish(self.input_edit)
-        self.input_edit.style().polish(self.input_edit)
+        self._repolish_input()
 
         self.summary_text.setPlainText(result.summary)
         self.diagnostics_text.setPlainText(result.diagnostics_text)
@@ -382,11 +416,13 @@ class QtMainWindow(QtWidgets.QMainWindow):
             offset_text = f"{result.slice_mode.title()} mode"
         self.offset_badge.setText(offset_text)
 
+        format_status = "(forced)" if result.forced_format else "auto"
         if result.best_format:
-            status = f"Format: {result.best_format}"
+            status = f"Parsed OK ({result.bit_length} bits). Format: {result.best_format} [{format_status}]"
         else:
-            status = "Format: (none passed parity)"
+            status = f"Parsed OK ({result.bit_length} bits). Format: (none passed parity)"
         self.status_label.setText(status)
+        self._add_history_entry(result)
 
     def _populate_table(self, model: QtGui.QStandardItemModel, rows: Iterable[TableRow]) -> None:
         model.removeRows(0, model.rowCount())
@@ -397,6 +433,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
                 QtGui.QStandardItem(row.value),
                 QtGui.QStandardItem(row.hex),
             ]
+            items[0].setData({"bits": row.bits, "range": row.range, "field": row.field, "value": row.value}, QtCore.Qt.UserRole)
             items[2].setFont(self.mono_font)
             items[3].setFont(self.mono_font)
             for item in items:
@@ -446,6 +483,46 @@ class QtMainWindow(QtWidgets.QMainWindow):
         label.setText(text)
         label.setStyleSheet(f"background:{color}; color: white; padding: 8px 14px; border-radius: 14px; font-weight:700;")
 
+    def _get_table_row_payload(self, index: QtCore.QModelIndex) -> Optional[dict]:
+        if not index.isValid():
+            return None
+        data = self.table_model.item(index.row(), 0).data(QtCore.Qt.UserRole)
+        if not isinstance(data, dict):
+            return None
+        return data
+
+    def _copy_table_row_default(self, index: QtCore.QModelIndex) -> None:
+        payload = self._get_table_row_payload(index)
+        if not payload:
+            return
+        text = f"{payload['field']}: {payload['value']}"
+        QtGui.QGuiApplication.clipboard().setText(text)
+        self.status_label.setText(f"Copied {payload['field']}: {payload['value']}")
+
+    def _show_table_context_menu(self, pos: QtCore.QPoint) -> None:
+        index = self.table_view.indexAt(pos)
+        payload = self._get_table_row_payload(index)
+        if not payload:
+            return
+        menu = QtWidgets.QMenu(self.table_view)
+        range_value = f"{payload['field']} [{payload['range']}] : {payload['value']}"
+        raw_bits = f"{payload['field']} bits[{payload['range']}] = {payload['bits']}"
+
+        copy_field = menu.addAction("Copy Field: Value")
+        copy_range = menu.addAction("Copy Range + Value")
+        copy_bits = menu.addAction("Copy Raw bits slice")
+
+        action = menu.exec_(self.table_view.viewport().mapToGlobal(pos))
+        if action == copy_field:
+            QtGui.QGuiApplication.clipboard().setText(f"{payload['field']}: {payload['value']}")
+            self.status_label.setText(f"Copied {payload['field']}: {payload['value']}")
+        elif action == copy_range:
+            QtGui.QGuiApplication.clipboard().setText(range_value)
+            self.status_label.setText(f"Copied {payload['field']} range + value")
+        elif action == copy_bits:
+            QtGui.QGuiApplication.clipboard().setText(raw_bits)
+            self.status_label.setText(f"Copied {payload['field']} bits slice")
+
     # ---------------- Input helpers ----------------
     def _normalize_input(self, text: str) -> str:
         cleaned = text.replace(" ", "").replace("\n", "").replace("\t", "").replace("\r", "")
@@ -453,6 +530,10 @@ class QtMainWindow(QtWidgets.QMainWindow):
 
     def _handle_input_edited(self, text: str) -> None:
         self.raw_input = self._normalize_input(text)
+        if self.input_edit.property("error"):
+            self.input_edit.setProperty("error", False)
+            self._repolish_input()
+            self.status_label.setText("Ready.")
         if self.pretty_chip.isChecked():
             self._apply_pretty_display()
 
@@ -478,6 +559,94 @@ class QtMainWindow(QtWidgets.QMainWindow):
         grouped = format_binary_groups(raw, 4)
         wrapped = textwrap.wrap(grouped, 48)
         return "\n".join(wrapped) if wrapped else grouped
+
+    def _repolish_input(self) -> None:
+        self.input_edit.style().unpolish(self.input_edit)
+        self.input_edit.style().polish(self.input_edit)
+        self.input_edit.update()
+
+    def _clear_results(self) -> None:
+        self.summary_text.clear()
+        self.diagnostics_text.clear()
+        self.table_model.removeRows(0, self.table_model.rowCount())
+        self.diagnostics_model.removeRows(0, self.diagnostics_model.rowCount())
+        self.parity_status.setText("Parity —")
+        self.parity_status.setStyleSheet("")
+        self.offset_badge.setText("Offset: —")
+        self.last_result = None
+
+    def _populate_format_combo(self) -> None:
+        self.format_combo.blockSignals(True)
+        self.format_combo.clear()
+        self.format_combo.addItem("Auto-detect", None)
+        for name, bitlen in self.controller.list_formats():
+            self.format_combo.addItem(f"{name} ({bitlen}b)", name)
+        comp = self.format_combo.completer()
+        comp.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        comp.setFilterMode(QtCore.Qt.MatchContains)
+        self.format_combo.setCurrentIndex(0)
+        self.format_combo.blockSignals(False)
+
+    def _handle_format_changed(self, _: int) -> None:
+        # Re-run calculation when the forced format changes to keep results in sync.
+        self.calculate()
+
+    def _reset_history_combo(self) -> None:
+        self.history_combo.blockSignals(True)
+        self.history_combo.clear()
+        self.history_combo.addItem("History", None)
+        self.history_combo.blockSignals(False)
+
+    def _add_history_entry(self, result: AnalysisResult) -> None:
+        bits = result.input_meta.get("normalized_bits") or ""
+        if not bits:
+            return
+        parity = "OK" if result.parity_ok else "FAIL" if result.parity_ok is False else "—"
+        format_label = result.best_format or "Unknown"
+        if result.forced_format:
+            format_label += " (forced)"
+        display_bits = format_binary_groups(bits, 4)
+        compact = display_bits if len(display_bits) <= 48 else display_bits[:48] + "…"
+        label = f"{compact} · {format_label} · Parity {parity}"
+
+        entry = {
+            "raw_bits": bits,
+            "forced_format": result.forced_format,
+            "label": label,
+        }
+        # Deduplicate by raw bits and forced format
+        self.history = [e for e in self.history if not (e["raw_bits"] == bits and e["forced_format"] == result.forced_format)]
+        self.history.insert(0, entry)
+        self.history = self.history[: self.max_history]
+        self._refresh_history_combo()
+
+    def _refresh_history_combo(self) -> None:
+        self.history_combo.blockSignals(True)
+        self.history_combo.clear()
+        self.history_combo.addItem("History", None)
+        for entry in self.history:
+            self.history_combo.addItem(entry["label"], entry)
+        # keep placeholder selected
+        self.history_combo.setCurrentIndex(0)
+        self.history_combo.blockSignals(False)
+
+    def _load_history_entry(self, index: int) -> None:
+        entry = self.history_combo.itemData(index)
+        if not entry:
+            return
+        raw_bits = entry.get("raw_bits", "")
+        self.raw_input = raw_bits
+        with QtCore.QSignalBlocker(self.input_edit):
+            self.input_edit.setText(self._format_pretty_text(raw_bits) if self.pretty_chip.isChecked() else raw_bits)
+        forced = entry.get("forced_format")
+        target_index = 0
+        for i in range(self.format_combo.count()):
+            if self.format_combo.itemData(i) == forced:
+                target_index = i
+                break
+        with QtCore.QSignalBlocker(self.format_combo):
+            self.format_combo.setCurrentIndex(target_index)
+        self.calculate()
 
 
 def launch_qt() -> None:

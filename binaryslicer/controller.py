@@ -26,6 +26,7 @@ class TableRow:
     value: str
     hex: str
     format_name: str
+    bits: str
 
 
 @dataclass
@@ -62,6 +63,7 @@ class AnalysisResult:
     selection_source: Optional[str] = None
     slice_mode: Optional[str] = None
     bit_length: int = 0
+    forced_format: Optional[str] = None
 
 
 class Controller:
@@ -77,6 +79,7 @@ class Controller:
         slice_mode: str = "auto",
         show_parity_failures: bool = False,
         reverse_bits: bool = False,
+        forced_format: Optional[str] = None,
     ) -> AnalysisResult:
         """Normalize input, select formats, and render results."""
 
@@ -87,16 +90,28 @@ class Controller:
                 "bit_order": "reversed" if reverse_bits else "normal",
             }
         )
-        result = AnalysisResult(error=error, input_meta=input_meta, slice_mode=slice_mode)
+        result = AnalysisResult(error=error, input_meta=input_meta, slice_mode=slice_mode, forced_format=forced_format)
         if error or not binary_string:
             return result
+
+        forced_candidate: Optional[Tuple[str, NormalizedFormat]] = None
+        if forced_format:
+            forced_candidate = self._resolve_forced_format(forced_format)
+            if not forced_candidate:
+                result.error = f"Format '{forced_format}' is not available."
+                return result
 
         working_bits = binary_string[::-1] if reverse_bits else binary_string
         input_meta["normalized_bits"] = binary_string
         input_meta["working_bits"] = working_bits
 
         result.bit_length = len(working_bits)
-        exact, compatible = self._detect_formats(working_bits)
+        exact: List[Tuple[str, NormalizedFormat]] = []
+        compatible: List[Tuple[str, NormalizedFormat]] = []
+        if forced_candidate:
+            exact = [forced_candidate]
+        else:
+            exact, compatible = self._detect_formats(working_bits)
 
         summary_lines: List[str] = []
         summary_lines.append(f"Bit order: {input_meta['bit_order']}\n")
@@ -134,7 +149,11 @@ class Controller:
         if exact:
             summary_lines.append("== Exact bit-length matches ==\n")
             rendered, diag_list, chunks, csv_rows, table_rows, parity_map = self._render_candidates(
-                working_bits, exact, None, show_parity_failures, match_type="exact"
+                working_bits,
+                exact,
+                slice_mode,
+                show_parity_failures,
+                match_type="forced" if forced_candidate else "exact",
             )
             if rendered:
                 rendered_entries.extend([entry for entry in diag_list if (entry.get("meta") or {}).get("rendered")])
@@ -174,7 +193,9 @@ class Controller:
             result.parity_ok = stats["gated_fail"] == 0 if stats["gating_present"] else None
             result.best_offset = best_entry.get("meta", {}).get("offset")
             result.best_format = best_entry.get("format")
-            result.selection_source = selection_source
+            result.selection_source = "forced" if forced_candidate else selection_source
+            if forced_candidate:
+                result.best_format = forced_candidate[0]
             parity_rows = parity_rows_map.get(best_entry["name"], [])
             if not show_parity_failures:
                 parity_rows = [row for row in parity_rows if row.ok is False]
@@ -182,7 +203,7 @@ class Controller:
 
             diagnostics_context["winner"] = {
                 "name": best_entry.get("format") or best_entry.get("name"),
-                "match_type": selection_source,
+                "match_type": result.selection_source,
                 "parity_stats": stats,
             }
 
@@ -192,6 +213,17 @@ class Controller:
         result.diagnostics_text = build_diagnostics_report(diagnostics_context)
 
         return result
+
+    def list_formats(self) -> List[Tuple[str, int]]:
+        return sorted([(name, fmt.bit_length) for name, fmt in self.repo.formats.items()], key=lambda x: x[0].lower())
+
+    def _resolve_forced_format(self, name: str) -> Optional[Tuple[str, NormalizedFormat]]:
+        if name in self.repo.formats:
+            return name, self.repo.formats[name]
+        for fmt_name, fmt in self.repo.formats.items():
+            if fmt_name.lower() == name.lower():
+                return fmt_name, fmt
+        return None
 
     def _detect_formats(self, binary_string: str) -> Tuple[List[Tuple[str, NormalizedFormat]], List[Tuple[str, NormalizedFormat]]]:
         exact: List[Tuple[str, NormalizedFormat]] = []
@@ -242,7 +274,7 @@ class Controller:
             all_entries.append(diag_entry)
 
             stats = diag_entry.get("parity_stats") or {}
-            should_render = show_parity_failures or match_type == "exact" or stats.get("gated_fail", 0) == 0
+            should_render = show_parity_failures or match_type in {"exact", "forced"} or stats.get("gated_fail", 0) == 0
             diag_entry["meta"]["rendered"] = bool(should_render)
             if not should_render:
                 continue
@@ -360,7 +392,16 @@ class Controller:
             start, end = info["range"]
             range_text = f"{start}–{end}"
             summary_lines.append(f"  {field:14}: {info['int']} (hex {info['hex']}), bits[{info['len']}]={info['bits']}\n")
-            table_rows.append(TableRow(field=field, range=range_text, value=str(info["int"]), hex=info["hex"], format_name=name))
+            table_rows.append(
+                TableRow(
+                    field=field,
+                    range=range_text,
+                    value=str(info["int"]),
+                    hex=info["hex"],
+                    format_name=name,
+                    bits=info["bits"],
+                )
+            )
             csv_rows.append(
                 {
                     "Format": name,
@@ -427,10 +468,19 @@ class Controller:
         def match(entry: Mapping) -> Optional[str]:
             return (entry.get("meta") or {}).get("match")
 
+        forced_entries = [entry for entry in entries if match(entry) == "forced"]
         exact_entries = [entry for entry in entries if match(entry) == "exact"]
         compatible_entries = [entry for entry in entries if match(entry) == "compatible"]
-        pool = exact_entries or compatible_entries
-        source = "exact" if exact_entries else "compatible" if compatible_entries else None
+        pool = forced_entries or exact_entries or compatible_entries
+        source = (
+            "forced"
+            if forced_entries
+            else "exact"
+            if exact_entries
+            else "compatible"
+            if compatible_entries
+            else None
+        )
 
         gated_ok = [
             entry
