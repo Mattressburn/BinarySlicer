@@ -1,58 +1,7 @@
 {
   "schema_version": 1,
-  "format_pack_version": "2025.12.15",
+  "format_pack_version": "2026.01.15",
   "formats": [
-    {
-      "name": "Wiegand - 26-bit (Generic)",
-      "bit_length": 26,
-      "fields": [
-        {
-          "name": "Parity L",
-          "start": 0,
-          "end": 0,
-          "role": "parity"
-        },
-        {
-          "name": "Facility",
-          "start": 1,
-          "end": 8
-        },
-        {
-          "name": "Card",
-          "start": 9,
-          "end": 24
-        },
-        {
-          "name": "Parity R",
-          "start": 25,
-          "end": 25,
-          "role": "parity"
-        }
-      ],
-      "parity": [
-        {
-          "type": "even",
-          "ranges": [
-            {
-              "start": 1,
-              "end": 12
-            }
-          ]
-        },
-        {
-          "type": "odd",
-          "ranges": [
-            {
-              "start": 13,
-              "end": 24
-            }
-          ]
-        }
-      ],
-      "csn": {
-        "enabled": false
-      }
-    },
     {
       "name": "H10301 - 26-bit",
       "bit_length": 26,
@@ -64,12 +13,12 @@
           "role": "parity"
         },
         {
-          "name": "Facility",
+          "name": "Facility Code",
           "start": 1,
           "end": 8
         },
         {
-          "name": "Card",
+          "name": "Card Number",
           "start": 9,
           "end": 24
         },
@@ -100,13 +49,11 @@
           ]
         }
       ],
-      "csn": {
-        "enabled": false
-      }
+      "csn_enabled": false
     },
     {
-      "name": "Software House - 37-bit",
-      "bit_length": 37,
+      "name": "Indala - 26-bit",
+      "bit_length": 26,
       "fields": [
         {
           "name": "Parity L",
@@ -115,29 +62,19 @@
           "role": "parity"
         },
         {
-          "name": "Unused",
+          "name": "Site Code",
           "start": 1,
-          "end": 3
+          "end": 12
         },
         {
-          "name": "Facility",
-          "start": 4,
-          "end": 13
-        },
-        {
-          "name": "Site",
-          "start": 14,
-          "end": 19
-        },
-        {
-          "name": "Card",
-          "start": 20,
-          "end": 35
+          "name": "Card Number",
+          "start": 13,
+          "end": 24
         },
         {
           "name": "Parity R",
-          "start": 36,
-          "end": 36,
+          "start": 25,
+          "end": 25,
           "role": "parity"
         }
       ],
@@ -147,7 +84,7 @@
           "ranges": [
             {
               "start": 1,
-              "end": 19
+              "end": 12
             }
           ]
         },
@@ -155,15 +92,13 @@
           "type": "odd",
           "ranges": [
             {
-              "start": 20,
-              "end": 35
+              "start": 13,
+              "end": 24
             }
           ]
         }
       ],
-      "csn": {
-        "enabled": false
-      }
+      "csn_enabled": false
     },
     {
       "name": "H10306 - 34-bit",
@@ -176,12 +111,12 @@
           "role": "parity"
         },
         {
-          "name": "Facility",
+          "name": "Facility Code",
           "start": 1,
           "end": 16
         },
         {
-          "name": "Card",
+          "name": "Card Number",
           "start": 17,
           "end": 32
         },
@@ -212,12 +147,10 @@
           ]
         }
       ],
-      "csn": {
-        "enabled": false
-      }
+      "csn_enabled": false
     },
     {
-      "name": "H10302 - 37-bit",
+      "name": "H10304 - 37-bit",
       "bit_length": 37,
       "fields": [
         {
@@ -227,12 +160,12 @@
           "role": "parity"
         },
         {
-          "name": "Facility",
+          "name": "Facility Code",
           "start": 1,
           "end": 16
         },
         {
-          "name": "Card",
+          "name": "Card Number",
           "start": 17,
           "end": 35
         },
@@ -263,9 +196,216 @@
           ]
         }
       ],
-      "csn": {
-        "enabled": false
-      }
+      "csn_enabled": false
+    },
+    {
+      "name": "H10302 - 37-bit",
+      "bit_length": 37,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Card Number",
+          "start": 1,
+          "end": 35
+        },
+        {
+          "name": "Parity R",
+          "start": 36,
+          "end": 36,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 18
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 19,
+              "end": 35
+            }
+          ]
+        }
+      ],
+      "csn_enabled": false
+    },
+    {
+      "name": "HID Corporate 1000 - 35-bit",
+      "bit_length": 35,
+      "fields": [
+        {
+          "name": "Parity 1",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Parity 2",
+          "start": 1,
+          "end": 1,
+          "role": "parity"
+        },
+        {
+          "name": "Company ID (Facility)",
+          "start": 2,
+          "end": 13
+        },
+        {
+          "name": "Card Number",
+          "start": 14,
+          "end": 33
+        },
+        {
+          "name": "Parity 3",
+          "start": 34,
+          "end": 34,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 2,
+              "end": 13
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 14,
+              "end": 33
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 2,
+              "end": 33
+            }
+          ]
+        }
+      ],
+      "csn_enabled": false
+    },
+    {
+      "name": "HID Corporate 1000 - 48-bit",
+      "bit_length": 48,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Company ID (Facility)",
+          "start": 1,
+          "end": 16
+        },
+        {
+          "name": "Card Number",
+          "start": 17,
+          "end": 46
+        },
+        {
+          "name": "Parity R",
+          "start": 47,
+          "end": 47,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 23
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 24,
+              "end": 46
+            }
+          ]
+        }
+      ],
+      "csn_enabled": false
+    },
+    {
+      "name": "DSX - 33-bit",
+      "bit_length": 33,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility Code",
+          "start": 1,
+          "end": 16
+        },
+        {
+          "name": "Card Number",
+          "start": 17,
+          "end": 32
+        }
+      ],
+      "parity": [
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 32
+            }
+          ]
+        }
+      ],
+      "csn_enabled": false
+    },
+    {
+      "name": "CASI-RUSCO - 40-bit",
+      "bit_length": 40,
+      "fields": [
+        {
+          "name": "Card Number",
+          "start": 0,
+          "end": 37
+        },
+        {
+          "name": "Unused",
+          "start": 38,
+          "end": 39
+        }
+      ],
+      "parity": [],
+      "csn_enabled": false
     },
     {
       "name": "P10001 - 40-bit (Honeywell)",
@@ -278,12 +418,12 @@
           "role": "parity"
         },
         {
-          "name": "Facility",
+          "name": "Facility Code",
           "start": 1,
           "end": 16
         },
         {
-          "name": "Card",
+          "name": "Card Number",
           "start": 17,
           "end": 38
         },
@@ -314,13 +454,241 @@
           ]
         }
       ],
-      "csn": {
-        "enabled": false
-      }
+      "csn_enabled": false
     },
     {
-      "name": "Corporate 1000 - 35-bit (Format 4000)",
-      "bit_length": 35,
+      "name": "FASC-N (CHUID) - 200-bit",
+      "bit_length": 200,
+      "fields": [
+        {
+          "name": "SS (Start Sentinel)",
+          "start": 0,
+          "end": 4,
+          "view": "ansi_bcd5_lsb_coerce",
+          "hidden": true
+        },
+        {
+          "name": "Agency Code (AC)",
+          "start": 5,
+          "end": 24,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "FS-1 (Field Separator)",
+          "start": 25,
+          "end": 29,
+          "view": "ansi_bcd5_lsb_coerce",
+          "hidden": true
+        },
+        {
+          "name": "System Code (SC)",
+          "start": 30,
+          "end": 49,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "FS-2 (Field Separator)",
+          "start": 50,
+          "end": 54,
+          "view": "ansi_bcd5_lsb_coerce",
+          "hidden": true
+        },
+        {
+          "name": "Card Number (CN)",
+          "start": 55,
+          "end": 84,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "FS-3 (Field Separator)",
+          "start": 85,
+          "end": 89,
+          "view": "ansi_bcd5_lsb_coerce",
+          "hidden": true
+        },
+        {
+          "name": "Credential Series (CS)",
+          "start": 90,
+          "end": 94,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "FS-4 (Field Separator)",
+          "start": 95,
+          "end": 99,
+          "view": "ansi_bcd5_lsb_coerce",
+          "hidden": true
+        },
+        {
+          "name": "Credential Issue (CI)",
+          "start": 100,
+          "end": 104,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "FS-5 (Field Separator)",
+          "start": 105,
+          "end": 109,
+          "view": "ansi_bcd5_lsb_coerce",
+          "hidden": true
+        },
+        {
+          "name": "EDIPI",
+          "start": 110,
+          "end": 159,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "Organizational Category (OC)",
+          "start": 160,
+          "end": 164,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "Organizational Identifier (OI)",
+          "start": 165,
+          "end": 184,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "Person/Org Association (POA)",
+          "start": 185,
+          "end": 189,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "ES (End Sentinel)",
+          "start": 190,
+          "end": 194,
+          "view": "ansi_bcd5_lsb_coerce"
+        },
+        {
+          "name": "LRC",
+          "start": 195,
+          "end": 199,
+          "view": "ansi_bcd5_lsb_coerce"
+        }
+      ],
+      "parity": [
+        {
+          "type": "odd",
+          "per_character": true,
+          "character_width": 5,
+          "parity_position": "msb",
+          "start": 0,
+          "end": 199,
+          "gate": true,
+          "allow_mixed_parity": true
+        }
+      ]
+    },
+    {
+      "name": "PIV-I CHUID - 128-bit",
+      "bit_length": 128,
+      "fields": [
+        {
+          "name": "Agency Code (AC)",
+          "start": 0,
+          "end": 15
+        },
+        {
+          "name": "System Code (SC)",
+          "start": 16,
+          "end": 31
+        },
+        {
+          "name": "Card Number (CN)",
+          "start": 32,
+          "end": 55
+        },
+        {
+          "name": "Credential Series (CS)",
+          "start": 56,
+          "end": 59
+        },
+        {
+          "name": "Credential Issue (CI)",
+          "start": 60,
+          "end": 63
+        },
+        {
+          "name": "Personal Identifier (EDIPI)",
+          "start": 64,
+          "end": 103
+        },
+        {
+          "name": "Organizational Category (OC)",
+          "start": 104,
+          "end": 107
+        },
+        {
+          "name": "Organizational Identifier (OI)",
+          "start": 108,
+          "end": 123
+        },
+        {
+          "name": "Person/Org Association (POA)",
+          "start": 124,
+          "end": 127
+        }
+      ],
+      "parity": [],
+      "csn_enabled": false
+    },
+    {
+      "name": "CSN - 32-bit (4-byte)",
+      "bit_length": 32,
+      "fields": [
+        {
+          "name": "CSN",
+          "start": 0,
+          "end": 31,
+          "view": "int, hex"
+        }
+      ],
+      "parity": [],
+      "csn_enabled": true,
+      "bit_order": "MSB",
+      "byte_order": "big",
+      "bcd": false
+    },
+    {
+      "name": "CSN - 56-bit (7-byte)",
+      "bit_length": 56,
+      "fields": [
+        {
+          "name": "CSN",
+          "start": 0,
+          "end": 55,
+          "view": "int, hex"
+        }
+      ],
+      "parity": [],
+      "csn_enabled": true,
+      "bit_order": "MSB",
+      "byte_order": "big",
+      "bcd": false
+    },
+    {
+      "name": "CSN - 64-bit (8-byte, TWIC/CAC friendly)",
+      "bit_length": 64,
+      "fields": [
+        {
+          "name": "CSN",
+          "start": 0,
+          "end": 63,
+          "view": "int, hex, bcd"
+        }
+      ],
+      "parity": [],
+      "csn_enabled": true,
+      "bit_order": "MSB",
+      "byte_order": "big",
+      "bcd": true
+    },
+    {
+      "name": "Wiegand-36 (Siemens)",
+      "bit_length": 36,
       "fields": [
         {
           "name": "Parity L",
@@ -329,24 +697,19 @@
           "role": "parity"
         },
         {
-          "name": "Company",
+          "name": "Site Code",
           "start": 1,
-          "end": 12
+          "end": 17
         },
         {
-          "name": "Card",
-          "start": 13,
-          "end": 32
-        },
-        {
-          "name": "Issue Level",
-          "start": 33,
-          "end": 33
+          "name": "Card Number",
+          "start": 18,
+          "end": 34
         },
         {
           "name": "Parity R",
-          "start": 34,
-          "end": 34,
+          "start": 35,
+          "end": 35,
           "role": "parity"
         }
       ],
@@ -356,7 +719,7 @@
           "ranges": [
             {
               "start": 1,
-              "end": 16
+              "end": 17
             }
           ]
         },
@@ -364,18 +727,15 @@
           "type": "odd",
           "ranges": [
             {
-              "start": 17,
-              "end": 33
+              "start": 18,
+              "end": 34
             }
           ]
         }
-      ],
-      "csn": {
-        "enabled": false
-      }
+      ]
     },
     {
-      "name": "H10305 - 39-bit",
+      "name": "Wiegand-39 (Pyramid)",
       "bit_length": 39,
       "fields": [
         {
@@ -385,12 +745,12 @@
           "role": "parity"
         },
         {
-          "name": "Facility",
+          "name": "Facility Code",
           "start": 1,
           "end": 19
         },
         {
-          "name": "Card",
+          "name": "Card Number",
           "start": 20,
           "end": 37
         },
@@ -420,121 +780,157 @@
             }
           ]
         }
-      ],
-      "csn": {
-        "enabled": false
-      }
+      ]
     },
     {
-      "name": "CSN - 32-bit (4-byte)",
-      "bit_length": 32,
+      "name": "Wiegand-42 (Lenel)",
+      "bit_length": 42,
       "fields": [
         {
-          "name": "CSN",
+          "name": "Parity L",
           "start": 0,
-          "end": 31,
-          "view": [
-            "int",
-            "hex"
-          ]
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility Code",
+          "start": 1,
+          "end": 16
+        },
+        {
+          "name": "Card Number",
+          "start": 17,
+          "end": 40
+        },
+        {
+          "name": "Parity R",
+          "start": 41,
+          "end": 41,
+          "role": "parity"
         }
       ],
-      "parity": [],
-      "csn": {
-        "enabled": true,
-        "bit_order": "MSB",
-        "byte_order": "big",
-        "bcd": false
-      }
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 20
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 21,
+              "end": 40
+            }
+          ]
+        }
+      ]
     },
     {
-      "name": "CSN - 56-bit (7-byte)",
-      "bit_length": 56,
+      "name": "Wiegand-37 (Generic)",
+      "bit_length": 37,
       "fields": [
         {
-          "name": "CSN",
+          "name": "Parity L",
           "start": 0,
-          "end": 55,
-          "view": [
-            "int",
-            "hex"
-          ]
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Site Code",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "name": "Card Number",
+          "start": 19,
+          "end": 35
+        },
+        {
+          "name": "Parity R",
+          "start": 36,
+          "end": 36,
+          "role": "parity"
         }
       ],
-      "parity": [],
-      "csn": {
-        "enabled": true,
-        "bit_order": "MSB",
-        "byte_order": "big",
-        "bcd": false
-      }
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 18
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 19,
+              "end": 35
+            }
+          ]
+        }
+      ]
     },
     {
-      "name": "CSN - 64-bit (8-byte, TWIC/CAC friendly)",
-      "bit_length": 64,
+      "name": "Wiegand-50 (Generic)",
+      "bit_length": 50,
       "fields": [
         {
-          "name": "CSN",
+          "name": "Header",
           "start": 0,
-          "end": 63,
-          "view": [
-            "int",
-            "hex",
-            "bcd"
-          ]
-        }
-      ],
-      "parity": [],
-      "csn": {
-        "enabled": true,
-        "bit_order": "MSB",
-        "byte_order": "big",
-        "bcd": true
-      }
-    },
-    {
-      "name": "CSN - 80-bit (10-byte)",
-      "bit_length": 80,
-      "fields": [
+          "end": 0,
+          "hidden": true
+        },
         {
-          "name": "CSN",
-          "start": 0,
-          "end": 79,
-          "view": [
-            "int",
-            "hex"
-          ]
-        }
-      ],
-      "parity": [],
-      "csn": {
-        "enabled": true,
-        "bit_order": "MSB",
-        "byte_order": "big",
-        "bcd": false
-      }
-    },
-    {
-      "name": "CSN - 128-bit (16-byte)",
-      "bit_length": 128,
-      "fields": [
+          "name": "Parity L",
+          "start": 1,
+          "end": 1,
+          "role": "parity"
+        },
         {
-          "name": "CSN",
-          "start": 0,
-          "end": 127,
-          "view": [
-            "int",
-            "hex"
-          ]
+          "name": "Facility Code",
+          "start": 2,
+          "end": 24
+        },
+        {
+          "name": "Parity Mid",
+          "start": 25,
+          "end": 25,
+          "role": "parity"
+        },
+        {
+          "name": "Card Number",
+          "start": 26,
+          "end": 49
         }
       ],
-      "parity": [],
-      "csn": {
-        "enabled": true,
-        "bit_order": "MSB",
-        "byte_order": "big",
-        "bcd": false
-      }
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 2,
+              "end": 25
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 26,
+              "end": 49
+            }
+          ]
+        }
+      ]
     }
   ]
 }

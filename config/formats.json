@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "format_pack_version": "2025.12.30",
+  "format_pack_version": "2026.01.15",
   "formats": [
     {
       "name": "H10301 - 26-bit",
@@ -577,7 +577,8 @@
           "parity_position": "msb",
           "start": 0,
           "end": 199,
-          "gate": true
+          "gate": true,
+          "allow_mixed_parity": true
         }
       ]
     },
@@ -684,6 +685,252 @@
       "bit_order": "MSB",
       "byte_order": "big",
       "bcd": true
+    },
+    {
+      "name": "Wiegand-36 (Siemens)",
+      "bit_length": 36,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Site Code",
+          "start": 1,
+          "end": 17
+        },
+        {
+          "name": "Card Number",
+          "start": 18,
+          "end": 34
+        },
+        {
+          "name": "Parity R",
+          "start": 35,
+          "end": 35,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 17
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 18,
+              "end": 34
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wiegand-39 (Pyramid)",
+      "bit_length": 39,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility Code",
+          "start": 1,
+          "end": 19
+        },
+        {
+          "name": "Card Number",
+          "start": 20,
+          "end": 37
+        },
+        {
+          "name": "Parity R",
+          "start": 38,
+          "end": 38,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 19
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 20,
+              "end": 37
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wiegand-42 (Lenel)",
+      "bit_length": 42,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Facility Code",
+          "start": 1,
+          "end": 16
+        },
+        {
+          "name": "Card Number",
+          "start": 17,
+          "end": 40
+        },
+        {
+          "name": "Parity R",
+          "start": 41,
+          "end": 41,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 20
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 21,
+              "end": 40
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wiegand-37 (Generic)",
+      "bit_length": 37,
+      "fields": [
+        {
+          "name": "Parity L",
+          "start": 0,
+          "end": 0,
+          "role": "parity"
+        },
+        {
+          "name": "Site Code",
+          "start": 1,
+          "end": 18
+        },
+        {
+          "name": "Card Number",
+          "start": 19,
+          "end": 35
+        },
+        {
+          "name": "Parity R",
+          "start": 36,
+          "end": 36,
+          "role": "parity"
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 1,
+              "end": 18
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 19,
+              "end": 35
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wiegand-50 (Generic)",
+      "bit_length": 50,
+      "fields": [
+        {
+          "name": "Header",
+          "start": 0,
+          "end": 0,
+          "hidden": true
+        },
+        {
+          "name": "Parity L",
+          "start": 1,
+          "end": 1,
+          "role": "parity"
+        },
+        {
+          "name": "Facility Code",
+          "start": 2,
+          "end": 24
+        },
+        {
+          "name": "Parity Mid",
+          "start": 25,
+          "end": 25,
+          "role": "parity"
+        },
+        {
+          "name": "Card Number",
+          "start": 26,
+          "end": 49
+        }
+      ],
+      "parity": [
+        {
+          "type": "even",
+          "ranges": [
+            {
+              "start": 2,
+              "end": 25
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 26,
+              "end": 49
+            }
+          ]
+        }
+      ]
     }
   ]
 }

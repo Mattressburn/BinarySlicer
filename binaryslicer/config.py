@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Iterable, Tuple
 
 from .paths import (
     bundled_resource_path,
@@ -31,6 +31,18 @@ def _write_json(path: Path, payload: JSONDict) -> None:
     with tmp.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
     tmp.replace(path)
+
+
+def _parse_version(parts: Iterable[str | int]) -> Tuple[int, ...]:
+    """Convert a dotted version string/iterable into a comparable tuple."""
+
+    parsed: list[int] = []
+    for part in parts:
+        try:
+            parsed.append(int(part))
+        except (TypeError, ValueError):
+            parsed.append(0)
+    return tuple(parsed)
 
 
 def load_json(name: str, default_factory: Callable[[], JSONDict]) -> JSONDict:
@@ -64,4 +76,4 @@ def save_json(name: str, payload: JSONDict) -> Path:
     return path
 
 
-__all__ = ["ConfigError", "load_json", "save_json"]
+__all__ = ["ConfigError", "load_json", "save_json", "_parse_version", "_read_json"]

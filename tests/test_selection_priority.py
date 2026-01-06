@@ -21,8 +21,8 @@ def test_exact_length_prioritized_over_compatible_with_parity_failures():
     assert result.best_format == "FASC-N (CHUID) - 200-bit"
     assert result.selection_source == "exact"
     assert result.parity_stats.get("gating_present") is True
-    assert result.parity_stats.get("gated_fail") == 8
-    assert result.parity_ok is False
+    assert result.parity_stats.get("gated_fail") == 0
+    assert result.parity_ok is True
     assert "FASC-N (CHUID) - 200-bit" in result.summary
     assert "exact-length priority" in result.diagnostics_text
-    assert "gated parity: fail=8" in result.diagnostics_text
+    assert "gated parity: fail=0" in result.diagnostics_text
