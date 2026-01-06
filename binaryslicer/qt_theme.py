@@ -88,6 +88,12 @@ def build_qss(tokens: Dict[str, str]) -> str:
         font-weight: 500;
     }}
 
+    QLabel[role="muted"] {{
+        color: {tokens['muted']};
+        font-weight: 600;
+        font-size: 10pt;
+    }}
+
     QLabel#ChipBadge {{
         background: {tokens['panel2']};
         color: {tokens['muted']};
@@ -121,6 +127,23 @@ def build_qss(tokens: Dict[str, str]) -> str:
     }}
     QLineEdit[error="true"] {{
         border: 2px solid {tokens['error']};
+    }}
+
+    QComboBox {{
+        background: {tokens['panel2']};
+        color: {tokens['text']};
+        padding: 10px 12px;
+        border-radius: 16px;
+        border: 1px solid {soft_border};
+    }}
+    QComboBox::drop-down {{
+        border: none;
+        width: 24px;
+    }}
+    QComboBox QAbstractItemView {{
+        background: {tokens['panel2']};
+        selection-background-color: {tokens['select']};
+        border: 1px solid {soft_border};
     }}
 
     QPushButton {{
