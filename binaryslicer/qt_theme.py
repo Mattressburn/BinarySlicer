@@ -38,6 +38,7 @@ def build_qss(tokens: Dict[str, str]) -> str:
     on_panel = _contrast_color(tokens.get("panel", "#171a21"))
     on_select = _contrast_color(tokens.get("select", tokens.get("accent", "#0399CC")))
     panel_hover = _mix(tokens.get("panel2", tokens["panel"]), tokens.get("accent", "#0399CC"), 0.08)
+    soft_border = _mix(tokens.get("border", "#2c2f36"), tokens.get("panel", "#171a21"), 0.6)
 
     style = f"""
     QWidget {{
@@ -47,19 +48,25 @@ def build_qss(tokens: Dict[str, str]) -> str:
         font-size: 11pt;
     }}
 
-    QFrame#Toolbar, QFrame#OptionsBar, QFrame#Card {{
+    QFrame#Toolbar, QFrame#OptionsBar {{
         background: {tokens['panel']};
-        border: 1px solid {tokens['border']};
-        border-radius: 16px;
+        border: none;
+        border-radius: 18px;
+    }}
+
+    QFrame#Card {{
+        background: {tokens['panel']};
+        border: 1px solid {soft_border};
+        border-radius: 18px;
     }}
 
     QFrame#OptionsBar {{
-        padding: 6px 10px;
+        padding: 8px 12px;
     }}
 
     QFrame#SummaryCard {{
-        border-radius: 16px;
-        border: 1px solid {tokens['border']};
+        border-radius: 18px;
+        border: 1px solid {soft_border};
         background: {tokens['panel']};
     }}
 
@@ -85,8 +92,8 @@ def build_qss(tokens: Dict[str, str]) -> str:
         background: {tokens['panel2']};
         color: {tokens['muted']};
         padding: 8px 12px;
-        border-radius: 14px;
-        border: 1px solid {tokens['border']};
+        border-radius: 16px;
+        border: 1px solid transparent;
         font-weight: 600;
     }}
 
@@ -104,8 +111,8 @@ def build_qss(tokens: Dict[str, str]) -> str:
         background: {tokens['panel2']};
         color: {tokens['text']};
         padding: 12px 14px;
-        border-radius: 14px;
-        border: 2px solid {tokens['border']};
+        border-radius: 16px;
+        border: 2px solid {soft_border};
         selection-background-color: {tokens['select']};
         selection-color: {on_select};
     }}
@@ -121,7 +128,7 @@ def build_qss(tokens: Dict[str, str]) -> str:
         color: {tokens['text']};
         border-radius: 16px;
         padding: 10px 16px;
-        border: 1px solid {tokens['border']};
+        border: 1px solid {soft_border};
         font-weight: 600;
     }}
     QPushButton:hover {{
@@ -150,8 +157,8 @@ def build_qss(tokens: Dict[str, str]) -> str:
         background: {tokens['panel2']};
         color: {tokens['text']};
         padding: 8px 14px;
-        border-radius: 16px;
-        border: 1px solid {tokens['border']};
+        border-radius: 18px;
+        border: 1px solid {soft_border};
     }}
     QPushButton#ChipButton:checked {{
         background: {tokens['accent']};
@@ -165,22 +172,22 @@ def build_qss(tokens: Dict[str, str]) -> str:
     QTextEdit {{
         background: {tokens['panel2']};
         color: {tokens['text']};
-        border-radius: 12px;
-        border: 1px solid {tokens['border']};
+        border-radius: 14px;
+        border: 1px solid {soft_border};
         padding: 12px;
     }}
 
     QTabWidget::pane {{
-        border: 1px solid {tokens['border']};
-        border-radius: 12px;
+        border: 1px solid {soft_border};
+        border-radius: 14px;
         padding: 6px;
         background: {tokens['panel']};
     }}
     QTabBar::tab {{
         background: {tokens['panel2']};
         color: {tokens['text']};
-        border: 1px solid {tokens['border']};
-        border-radius: 12px;
+        border: 1px solid {soft_border};
+        border-radius: 14px;
         padding: 8px 16px;
         margin-right: 6px;
     }}

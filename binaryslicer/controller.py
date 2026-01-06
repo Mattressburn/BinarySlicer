@@ -71,20 +71,42 @@ class Controller:
         self.repo = repo or FormatRepository()
 
     def analyze_input(
-        self, raw_input: str, *, slice_mode: str = "auto", show_parity_failures: bool = False
+        self,
+        raw_input: str,
+        *,
+        slice_mode: str = "auto",
+        show_parity_failures: bool = False,
+        reverse_bits: bool = False,
     ) -> AnalysisResult:
         """Normalize input, select formats, and render results."""
 
         binary_string, error, input_meta = process_input(raw_input)
+        input_meta.update(
+            {
+                "reverse_bits": reverse_bits,
+                "bit_order": "reversed" if reverse_bits else "normal",
+            }
+        )
         result = AnalysisResult(error=error, input_meta=input_meta, slice_mode=slice_mode)
         if error or not binary_string:
             return result
 
-        result.bit_length = len(binary_string)
-        exact, compatible = self._detect_formats(binary_string)
+        working_bits = binary_string[::-1] if reverse_bits else binary_string
+        input_meta["normalized_bits"] = binary_string
+        input_meta["working_bits"] = working_bits
+
+        result.bit_length = len(working_bits)
+        exact, compatible = self._detect_formats(working_bits)
 
         summary_lines: List[str] = []
-        summary_lines.append(f"Binary ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
+        summary_lines.append(f"Bit order: {input_meta['bit_order']}\n")
+        if reverse_bits:
+            summary_lines.append(f"Raw bits ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
+            summary_lines.append(
+                f"Working bits ({len(working_bits)} bits):\n{format_binary_groups(working_bits)}\n\n"
+            )
+        else:
+            summary_lines.append(f"Binary ({len(working_bits)} bits):\n{format_binary_groups(working_bits)}\n\n")
 
         diagnostics_context: Dict = {
             "input": input_meta,
@@ -94,6 +116,8 @@ class Controller:
             "auto_candidates": [],
             "slice_mode": slice_mode,
             "winner": {},
+            "bit_order": input_meta["bit_order"],
+            "reverse_bits": reverse_bits,
         }
 
         if not exact and not compatible:
@@ -110,7 +134,7 @@ class Controller:
         if exact:
             summary_lines.append("== Exact bit-length matches ==\n")
             rendered, diag_list, chunks, csv_rows, table_rows, parity_map = self._render_candidates(
-                binary_string, exact, None, show_parity_failures, match_type="exact"
+                working_bits, exact, None, show_parity_failures, match_type="exact"
             )
             if rendered:
                 rendered_entries.extend([entry for entry in diag_list if (entry.get("meta") or {}).get("rendered")])
@@ -125,7 +149,7 @@ class Controller:
             summary_lines.append("== Compatible (input longer than known format) ==\n")
             summary_lines.append("These may indicate framing/padding.\n\n")
             rendered, diag_list, chunks, csv_rows, table_rows, parity_map = self._render_candidates(
-                binary_string, compatible, slice_mode, show_parity_failures, match_type="compatible"
+                working_bits, compatible, slice_mode, show_parity_failures, match_type="compatible"
             )
             if rendered:
                 rendered_entries.extend([entry for entry in diag_list if (entry.get("meta") or {}).get("rendered")])
