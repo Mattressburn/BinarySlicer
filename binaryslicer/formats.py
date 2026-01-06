@@ -50,6 +50,7 @@ class NormalizedFormat:
     raw: Dict
     field_views: Dict[str, str] = field(default_factory=dict)
     field_hidden: Dict[str, bool] = field(default_factory=dict)
+    format_id: Optional[str] = None
 
 
 class FormatRepository:
@@ -59,6 +60,7 @@ class FormatRepository:
         self._doc = load_formats_document()
         self.last_errors: List[str] = []
         self._formats = normalize_formats(self._doc, self.last_errors)
+        self._formats_by_id = self._index_formats(self._formats)
 
     @property
     def document(self) -> Dict:
@@ -68,10 +70,15 @@ class FormatRepository:
     def formats(self) -> Dict[str, NormalizedFormat]:
         return self._formats
 
+    @property
+    def formats_by_id(self) -> Dict[str, NormalizedFormat]:
+        return self._formats_by_id
+
     def refresh(self) -> None:
         self._doc = load_formats_document()
         self.last_errors = []
         self._formats = normalize_formats(self._doc, self.last_errors)
+        self._formats_by_id = self._index_formats(self._formats)
 
     def save(self) -> None:
         save_formats_document(self._doc)
@@ -80,13 +87,25 @@ class FormatRepository:
         self._doc = doc
         self.last_errors = []
         self._formats = normalize_formats(self._doc, self.last_errors)
+        self._formats_by_id = self._index_formats(self._formats)
         save_formats_document(self._doc)
 
     def merge(self, incoming: Dict) -> None:
         self._doc = merge_formats(self._doc, incoming)
         self.last_errors = []
         self._formats = normalize_formats(self._doc, self.last_errors)
+        self._formats_by_id = self._index_formats(self._formats)
         save_formats_document(self._doc)
+
+    @staticmethod
+    def _index_formats(formats: Dict[str, NormalizedFormat]) -> Dict[str, NormalizedFormat]:
+        by_id: Dict[str, NormalizedFormat] = {}
+        for fmt in formats.values():
+            if fmt.format_id:
+                by_id[str(fmt.format_id)] = fmt
+            else:
+                by_id[fmt.name] = fmt
+        return by_id
 
 
 def _version_tuple(value: object) -> Tuple[int, ...]:
@@ -176,6 +195,7 @@ def _normalize_parity_to_list(parity) -> List[Dict]:
 def normalize_format_entry(entry: Dict) -> NormalizedFormat:
     name = entry.get("name", "Format")
     bitlen = int(entry.get("bit_length", 0))
+    fmt_id = entry.get("id") or name
 
     fields: Dict[str, FieldRange] = {}
     views: Dict[str, str] = {}
@@ -224,6 +244,7 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
         raw=entry,
         field_views=views,
         field_hidden=hidden,
+        format_id=str(fmt_id),
     )
 
 
