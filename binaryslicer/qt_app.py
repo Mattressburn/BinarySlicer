@@ -45,7 +45,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("BinarySlicer – JCI Edition")
+        self.setWindowTitle("JCI Binary/Hex Slicer")
         self.resize(1360, 820)
 
         self.controller = Controller()
@@ -70,7 +70,7 @@ class QtMainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(central)
 
         header = QtWidgets.QHBoxLayout()
-        title = QtWidgets.QLabel("BinarySlicer · JCI Edition")
+        title = QtWidgets.QLabel("JCI Binary/Hex Slicer")
         title.setObjectName("Heading")
         header.addWidget(title)
         header.addStretch()
@@ -258,16 +258,18 @@ class QtMainWindow(QtWidgets.QMainWindow):
         card.setObjectName("Card")
         vbox = QtWidgets.QVBoxLayout(card)
         vbox.setContentsMargins(10, 10, 10, 10)
-        vbox.setSpacing(8)
+        vbox.setSpacing(6)
 
         self.tabs = QtWidgets.QTabWidget()
         self.tabs.setDocumentMode(True)
+        self.tabs.setUsesScrollButtons(False)
+        self.tabs.tabBar().setDrawBase(False)
         vbox.addWidget(self.tabs, stretch=1)
 
         self.table_tab = QtWidgets.QWidget()
         table_layout = QtWidgets.QVBoxLayout(self.table_tab)
-        table_layout.setContentsMargins(4, 4, 4, 4)
-        table_layout.setSpacing(6)
+        table_layout.setContentsMargins(0, 0, 0, 0)
+        table_layout.setSpacing(0)
 
         self.table_view = QtWidgets.QTableView()
         self.table_model = QtGui.QStandardItemModel(0, 4)
@@ -286,8 +288,8 @@ class QtMainWindow(QtWidgets.QMainWindow):
 
         self.diagnostics_tab = QtWidgets.QWidget()
         diag_layout = QtWidgets.QVBoxLayout(self.diagnostics_tab)
-        diag_layout.setContentsMargins(4, 4, 4, 4)
-        diag_layout.setSpacing(6)
+        diag_layout.setContentsMargins(0, 0, 0, 0)
+        diag_layout.setSpacing(0)
 
         self.diagnostics_view = QtWidgets.QTableView()
         self.diagnostics_model = QtGui.QStandardItemModel(0, 8)
