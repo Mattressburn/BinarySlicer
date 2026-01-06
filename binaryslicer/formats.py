@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import copy
 import itertools
+import json
 from dataclasses import dataclass, field
 from typing import Dict, List, MutableMapping, Optional, Sequence, Tuple
 
-from .config import load_json, save_json
+from .config import ConfigError, _parse_version, _read_json, save_json
+from .paths import ensure_user_config_dir, user_config_dir
 from .resources import default_formats
 
 FORMATS_FILENAME = "formats.json"
@@ -87,8 +89,43 @@ class FormatRepository:
         save_formats_document(self._doc)
 
 
+def _version_tuple(value: object) -> Tuple[int, ...]:
+    if isinstance(value, str):
+        return _parse_version(value.replace("-", ".").split("."))
+    if isinstance(value, (list, tuple)):
+        return _parse_version(value)
+    return _parse_version([value])
+
+
+def _format_pack_is_newer(bundled: Dict, user: Dict) -> bool:
+    return _version_tuple(bundled.get("format_pack_version", 0)) > _version_tuple(
+        user.get("format_pack_version", 0)
+    )
+
+
 def load_formats_document() -> Dict:
-    return load_json(FORMATS_FILENAME, default_formats)
+    """Load the formats document, upgrading the user copy when the bundle is newer."""
+
+    ensure_user_config_dir()
+    bundled_doc = default_formats()
+    user_path = user_config_dir() / FORMATS_FILENAME
+
+    try:
+        user_doc = _read_json(user_path)
+    except FileNotFoundError:
+        user_doc = None
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"Invalid JSON in {user_path}") from exc
+
+    if user_doc is None:
+        save_formats_document(bundled_doc)
+        return bundled_doc
+
+    if bundled_doc and _format_pack_is_newer(bundled_doc, user_doc):
+        save_formats_document(bundled_doc)
+        return bundled_doc
+
+    return user_doc
 
 
 def save_formats_document(doc: Dict) -> None:
@@ -167,6 +204,7 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
                     "per_character": True,
                     "character_width": int(rule.get("character_width", 5)),
                     "parity_position": str(rule.get("parity_position", "msb")).lower(),
+                    "allow_mixed_parity": bool(rule.get("allow_mixed_parity", False)),
                     "start": int(rule.get("start", 0)),
                     "end": int(rule.get("end", bitlen - 1 if bitlen else 0)),
                     "gate": bool(rule.get("gate", False)),
@@ -515,6 +553,7 @@ def _build_per_character_parity_entries(
     character_width: int,
     parity_position: str,
     gate: bool,
+    allow_mixed_parity: bool = False,
 ) -> List[Dict]:
     """Generate parity checks for each fixed-width character."""
     result: List[Dict] = []
@@ -548,14 +587,28 @@ def _build_per_character_parity_entries(
             data_bits = chunk[1:]
             parity_index = c_start
 
+        typ_used = typ
         expected = parity_even_bit_needed(data_bits) if typ == "even" else parity_odd_bit_needed(data_bits)
         actual = int(parity_bit)
         ok = (actual == expected)
+        used_alternate = False
+        if allow_mixed_parity and not ok:
+            alt_type = "odd" if typ == "even" else "even"
+            alt_expected = parity_even_bit_needed(data_bits) if alt_type == "even" else parity_odd_bit_needed(data_bits)
+            if actual == alt_expected:
+                ok = True
+                expected = alt_expected
+                typ_used = alt_type
+                used_alternate = True
+
+        label_base = "Even Parity (char)" if typ_used == "even" else "Odd Parity (char)"
+        label = f"{label_base} [alt]" if used_alternate else label_base
 
         result.append(
             {
-                "label": "Even Parity (char)" if typ == "even" else "Odd Parity (char)",
-                "type": typ,
+                "label": label,
+                "type": typ_used,
+                "configured_type": typ,
                 "coverage": (c_start, c_end),
                 "expected": expected,
                 "actual": actual,
@@ -585,6 +638,7 @@ def verify_parity(binary_string: str, fmt: NormalizedFormat) -> List[Dict]:
             start = int(rule.get("start", 0))
             end = int(rule.get("end", len(binary_string) - 1))
             gate = bool(rule.get("gate", True))
+            allow_mixed_parity = bool(rule.get("allow_mixed_parity", False))
             result.extend(
                 _build_per_character_parity_entries(
                     binary_string=binary_string,
@@ -594,6 +648,7 @@ def verify_parity(binary_string: str, fmt: NormalizedFormat) -> List[Dict]:
                     character_width=character_width,
                     parity_position=parity_position,
                     gate=gate,
+                    allow_mixed_parity=allow_mixed_parity,
                 )
             )
             continue

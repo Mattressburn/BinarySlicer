@@ -96,7 +96,7 @@ class App:
 
         options = ttk.Frame(container, padding=(12, 6), style="Panel.TFrame")
         options.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(8, 4))
-        options.columnconfigure(4, weight=1)
+        options.columnconfigure(6, weight=1)
 
         ttk.Label(options, text="Options", style="Muted.TLabel").grid(row=0, column=0, sticky=tk.W)
         self.show_fails = tk.BooleanVar(value=False)
@@ -107,12 +107,20 @@ class App:
             style="TCheckbutton",
             command=self._refresh_diagnostics_tree,
         ).grid(row=0, column=1, padx=(12, 8), sticky=tk.W)
+        self.reverse_bits = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            options,
+            text="Reverse bit order",
+            variable=self.reverse_bits,
+            style="TCheckbutton",
+            command=self._on_reverse_toggle,
+        ).grid(row=0, column=2, padx=(0, 12), sticky=tk.W)
 
-        ttk.Label(options, text="Compatible slicing:", style="Muted.TLabel").grid(row=0, column=2, padx=(8, 4))
+        ttk.Label(options, text="Compatible slicing:", style="Muted.TLabel").grid(row=0, column=3, padx=(8, 4))
         self.slice_mode = tk.StringVar(value="auto")
-        ttk.Radiobutton(options, text="Auto", value="auto", variable=self.slice_mode).grid(row=0, column=3, padx=2)
-        ttk.Radiobutton(options, text="Leftmost", value="left", variable=self.slice_mode).grid(row=0, column=4, padx=2)
-        ttk.Radiobutton(options, text="Rightmost", value="right", variable=self.slice_mode).grid(row=0, column=5, padx=2)
+        ttk.Radiobutton(options, text="Auto", value="auto", variable=self.slice_mode).grid(row=0, column=4, padx=2)
+        ttk.Radiobutton(options, text="Leftmost", value="left", variable=self.slice_mode).grid(row=0, column=5, padx=2)
+        ttk.Radiobutton(options, text="Rightmost", value="right", variable=self.slice_mode).grid(row=0, column=6, padx=2)
 
         main = ttk.Frame(container, padding=(0, 8), style="Panel.TFrame")
         main.grid(row=3, column=0, columnspan=3, sticky=(tk.N, tk.S, tk.E, tk.W))
@@ -235,6 +243,8 @@ class App:
 
         self.last_rows_for_csv: list[dict] = []
         self.last_binary_used = ""
+        self.last_working_bits = ""
+        self.last_input_meta: dict = {}
         self.last_format_checks: list[dict] = []
 
         self._apply_theme()
@@ -366,6 +376,17 @@ class App:
     def _clear_text(self, widget: tk.Text) -> None:
         widget.configure(state=tk.NORMAL)
         widget.delete("1.0", tk.END)
+
+    def _working_bits(self, binary_string: str) -> str:
+        return binary_string[::-1] if self.reverse_bits.get() else binary_string
+
+    def _on_reverse_toggle(self) -> None:
+        if self.last_binary_used:
+            self._render_for_binary(self.last_binary_used, self.last_input_meta)
+        else:
+            self._refresh_diagnostics_tree()
+        state = "ON" if self.reverse_bits.get() else "OFF"
+        self.status.configure(text=f"Reverse bit order {state}")
 
     def toggle_theme(self) -> None:
         modes = list(available_themes())
@@ -907,14 +928,26 @@ class App:
         if error:
             messagebox.showerror("Error", error)
             return
+        self._render_for_binary(binary_string, input_meta)
+
+    def _render_for_binary(self, binary_string: str, input_meta: dict | None = None) -> None:
         self.last_binary_used = binary_string
+        self.last_input_meta = input_meta or {}
+        working_bits = self._working_bits(binary_string)
+        self.last_working_bits = working_bits
         self._clear_text(self.summary_text)
         self._clear_text(self.diagnostics_text)
 
+        reverse_note = " (reverse bit order ON)" if self.reverse_bits.get() else ""
         summary_lines: list[str] = []
-        summary_lines.append(f"Binary ({len(binary_string)} bits):\n{format_binary_groups(binary_string)}\n\n")
+        summary_lines.append(
+            f"Working bits ({len(working_bits)} bits){reverse_note}:\n{format_binary_groups(working_bits)}\n\n"
+        )
+        if self.reverse_bits.get():
+            summary_lines.append("Original input (unchanged):\n")
+            summary_lines.append(f"{format_binary_groups(binary_string)}\n\n")
 
-        exact, compatible = self._detect_formats(binary_string)
+        exact, compatible = self._detect_formats(working_bits)
         diagnostics_context: dict = {
             "input": input_meta,
             "exact_matches": [name for name, _ in exact],
@@ -922,6 +955,7 @@ class App:
             "rendered": [],
             "auto_candidates": [],
             "slice_mode": self.slice_mode.get(),
+            "reverse_bits": self.reverse_bits.get(),
         }
 
         if not exact and not compatible:
@@ -938,7 +972,7 @@ class App:
         rendered_any = False
         if exact:
             summary_lines.append("== Exact bit-length matches ==\n")
-            rendered, diag, chunks = self._render_candidates(binary_string, exact, slice_mode=None)
+            rendered, diag, chunks = self._render_candidates(working_bits, exact, slice_mode=None)
             diagnostics_context["rendered"].extend(diag)
             summary_lines.extend(chunks)
             rendered_any |= rendered
@@ -947,7 +981,7 @@ class App:
             summary_lines.append("== Compatible (input longer than known format) ==\n")
             summary_lines.append("These may indicate framing/padding.\n\n")
             rendered, diag, chunks = self._render_candidates(
-                binary_string,
+                working_bits,
                 compatible,
                 slice_mode=self.slice_mode.get(),
             )
