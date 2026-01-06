@@ -48,21 +48,17 @@ def build_qss(tokens: Dict[str, str]) -> str:
         font-size: 11pt;
     }}
 
-    QFrame#Toolbar, QFrame#OptionsBar {{
-        background: {tokens['panel']};
-        border: none;
-        border-radius: 18px;
+    QLabel {{
+        background: transparent;
     }}
 
-    QFrame#Card {{
+
+    QFrame#Toolbar, QFrame#OptionsBar, QFrame#Card {{
         background: {tokens['panel']};
-        border: 1px solid {soft_border};
-        border-radius: 18px;
+        border: 1px solid {tokens['border']};
+        border-radius: 16px;
     }}
 
-    QFrame#OptionsBar {{
-        padding: 8px 12px;
-    }}
 
     QFrame#SummaryCard {{
         border-radius: 18px;
@@ -200,48 +196,72 @@ def build_qss(tokens: Dict[str, str]) -> str:
         padding: 12px;
     }}
 
+    
     QTabWidget::pane {{
-        border: 1px solid {soft_border};
+        border: 1px solid {tokens['border']};
         border-radius: 14px;
-        padding: 6px;
         background: {tokens['panel']};
+        padding: 8px;
+        margin-top: 10px;   /* prevents tab clipping into the rounded border */
     }}
+
+    QTabWidget::tab-bar {{
+        left: 10px;
+        top: 0px;
+    }}
+
+    QTabBar {{
+        background: transparent;
+    }}
+
     QTabBar::tab {{
         background: {tokens['panel2']};
         color: {tokens['text']};
-        border: 1px solid {soft_border};
-        border-radius: 14px;
-        padding: 8px 16px;
+        border: 1px solid {tokens['border']};
+        border-radius: 12px;
+        padding: 6px 14px;
+        min-height: 28px;
         margin-right: 6px;
     }}
+
     QTabBar::tab:selected {{
         background: {tokens['panel']};
-        color: {tokens['text']};
-        border: 1px solid {tokens['accent']};
+        border: 1px solid {tokens['border']};
+        color: {tokens.get('accent2', tokens['accent'])};
+        font-weight: 600;
+        margin-bottom: 0px;
     }}
+
+
     QTabBar::tab:hover {{
-        color: {tokens['accent2']};
+        color: {tokens.get('accent2', tokens['accent'])};
     }}
+
 
     QTableView {{
         background: {tokens['panel']};
         alternate-background-color: {tokens['panel2']};
         selection-background-color: {tokens['ok']};
         selection-color: {on_ok};
-        border: 1px solid {tokens['border']};
+        border: none;                /* changed */
         border-radius: 12px;
         gridline-color: {tokens['border']};
     }}
+
+   
     QTableView::item {{
         border: none;
         padding: 6px;
     }}
+    
     QHeaderView::section {{
         background: {tokens['panel2']};
         color: {tokens['text']};
         border: none;
+        border-bottom: 1px solid {tokens['border']};
         padding: 8px 10px;
-        border-radius: 8px;
+        border-radius: 0px;
+        font-weight: 600;
     }}
 
     QScrollBar:vertical {{
