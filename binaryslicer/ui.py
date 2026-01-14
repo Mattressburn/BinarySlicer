@@ -38,13 +38,16 @@ from .theme import (
 
 BIT_RE = re.compile(r"^[01]+$")
 
+# Updated during build to reflect the date-based version (YYYY.MM.DD).
+APP_VERSION = "2026.01.14"
+
 
 class App:
     """Main BinarySlicer application."""
 
     def __init__(self, root: tb.Window) -> None:
         self.root = root
-        self.root.title("BinarySlicer – JCI Edition")
+        self.root.title(f"BinarySlicer {APP_VERSION} – JCI Edition")
 
         ensure_user_config_dir()
 
@@ -71,7 +74,7 @@ class App:
         container.columnconfigure(2, weight=1)
         container.rowconfigure(3, weight=1)
 
-        self.header = ttk.Label(container, text="BinarySlicer · JCI Edition", style="Header.TLabel")
+        self.header = ttk.Label(container, text=f"BinarySlicer · JCI Edition · {APP_VERSION}", style="Header.TLabel")
         self.header.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 8))
 
         toolbar = ttk.Frame(container, padding=(12, 10), style="Panel.TFrame")
@@ -1277,3 +1280,11 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+

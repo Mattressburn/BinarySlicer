@@ -1,7 +1,5 @@
-"""Entrypoint for the BinarySlicer application."""
-
-from binaryslicer.ui import main
+from binaryslicer.qt_app import launch_qt
 
 
 if __name__ == "__main__":
-    main()
+    launch_qt()
