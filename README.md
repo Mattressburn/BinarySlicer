@@ -75,4 +75,8 @@ Run unit tests with:
 py -m pytest
 ```
 
+## Format detection notes
+
+BinarySlicer reports matches as **Exact** when the working bits align to a format's canonical window (bit-length match or a zero-offset window with only benign trailing zero padding) and all gated parity checks pass. It reports **Compatible** when the input is longer and a non-zero offset or framing/padding is required to find a passing window, preserving visibility into ambiguous payloads without claiming a definitive format.
+
 The suite focuses on binary parsing helpers (`binaryslicer.formats`) to guard against regressions when new formats are introduced.
