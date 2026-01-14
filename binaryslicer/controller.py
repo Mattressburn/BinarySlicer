@@ -16,6 +16,18 @@ from .formats import (
     verify_parity,
 )
 
+# Canonical user-facing label for the default 26-bit Wiegand profile.
+WIEGAND26_DISPLAY = "Standard Wiegand 26 (H10301)"
+WIEGAND26_ALIAS_KEYS = {
+    "h10301 - 26-bit",
+    "h10301",
+    "standard wiegand 26",
+    "standard wiegand 26 (h10301)",
+    "wiegand-26 (h10301)",
+    "wiegand-26",
+    "standard 26-bit wiegand",
+}
+
 
 @dataclass
 class TableRow:
@@ -119,6 +131,22 @@ class Controller:
         else:
             exact, compatible = self._detect_formats(working_bits)
 
+        # Exact vs Compatible:
+        # - Exact: bit-length matches or a canonical zero-offset Wiegand-26 window with clean parity,
+        #   tolerating only benign trailing zero padding.
+        # - Compatible: longer inputs requiring non-zero offsets or framing to find a passing window.
+        promoted: List[Tuple[str, NormalizedFormat]] = []
+        remaining: List[Tuple[str, NormalizedFormat]] = []
+        for fmt_id, fmt in compatible:
+            candidates = find_best_offsets(working_bits, fmt, step=1, top_n=1)
+            if candidates and self._should_promote_w26_exact(working_bits, fmt, candidates[0]):
+                promoted.append((fmt_id, fmt))
+            else:
+                remaining.append((fmt_id, fmt))
+        if promoted:
+            exact.extend(promoted)
+        compatible = remaining
+
         summary_lines: List[str] = []
         selection_label = "Auto-detect"
         if forced_candidate:
@@ -138,8 +166,8 @@ class Controller:
 
         diagnostics_context: Dict = {
             "input": input_meta,
-            "exact_matches": [fmt.name for _, fmt in exact],
-            "compatible_matches": [fmt.name for _, fmt in compatible],
+            "exact_matches": [self._alias_format_name(fmt.name, fmt.format_id) for _, fmt in exact],
+            "compatible_matches": [self._alias_format_name(fmt.name, fmt.format_id) for _, fmt in compatible],
             "rendered": [],
             "auto_candidates": [],
             "slice_mode": slice_mode,
@@ -279,13 +307,14 @@ class Controller:
             )
 
         for fmt_id, fmt in candidates:
-            use_bits, display_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, fmt.name)
+            use_bits, base_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, fmt.name)
+            display_name = self._alias_format_name(base_name, fmt.format_id)
             summary_block, diag_entry, rows, csv_data, parity_rows = self._render_format(
                 use_bits,
                 display_name,
                 fmt,
                 {"mode": slice_mode, "match": match_type},
-                format_name=fmt.name,
+                format_name=self._alias_format_name(fmt.name, fmt.format_id),
             )
             meta = dict(diag_entry.get("meta") or {})
             meta.update({"mode": slice_mode, "match": match_type})
@@ -339,8 +368,9 @@ class Controller:
             cand = entry["candidate"]
             stats = cand["stats"]
             parity = cand["parity"]
+            base_name = self._alias_format_name(entry["name"], entry["format_id"])
             display_name = (
-                f"{entry['name']} (auto offset +{cand['offset']}, "
+                f"{base_name} (auto offset +{cand['offset']}, "
                 f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
             )
             summary_block, diag_entry, rows, csv_data, parity_rows = self._render_format(
@@ -353,7 +383,7 @@ class Controller:
                     "top_candidates": all_results[:limit],
                     "match": match_type,
                 },
-                format_name=entry["name"],
+                format_name=base_name,
             )
             meta = dict(diag_entry.get("meta") or {})
             meta.update({"mode": "auto", "offset": cand["offset"], "match": match_type})
@@ -391,6 +421,32 @@ class Controller:
         for result in parity:
             if result.get("gate", True) and result.get("ok") is False:
                 return False
+        return True
+
+    @staticmethod
+    def _is_wiegand_26(fmt: NormalizedFormat) -> bool:
+        name = (fmt.name or "").lower()
+        fmt_id = (fmt.format_id or "").lower()
+        return fmt.bit_length == 26 and ("wiegand" in name or "h10301" in name or "h10301" in fmt_id)
+
+    @staticmethod
+    def _alias_format_name(name: str, format_id: Optional[str]) -> str:
+        key_name = (name or "").lower()
+        key_id = (format_id or "").lower()
+        if key_name in WIEGAND26_ALIAS_KEYS or key_id in WIEGAND26_ALIAS_KEYS:
+            return WIEGAND26_DISPLAY
+        return name
+
+    def _should_promote_w26_exact(self, bits: str, fmt: NormalizedFormat, candidate: Mapping) -> bool:
+        if not self._is_wiegand_26(fmt):
+            return False
+        if candidate.get("offset") != 0:
+            return False
+        stats = candidate.get("stats") or {}
+        if stats.get("gated_fail", 1) != 0:
+            return False
+        if len(bits) > fmt.bit_length and any(ch == "1" for ch in bits[fmt.bit_length :]):
+            return False
         return True
 
     def _render_format(
