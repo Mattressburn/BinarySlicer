@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "format_pack_version": "2026.01.15",
+  "format_pack_version": "2026.02.05",
   "formats": [
     {
       "name": "H10301 - 26-bit",
@@ -245,6 +245,8 @@
     {
       "name": "HID Corporate 1000 - 35-bit",
       "bit_length": 35,
+      "used_bits": 35,
+      "used_bits_alignment": "msb",
       "fields": [
         {
           "name": "Parity 1",
@@ -277,31 +279,34 @@
       ],
       "parity": [
         {
+          "type": "odd",
+          "ranges": [
+            {
+              "start": 2,
+              "end": 33
+            }
+          ],
+          "gate": false
+        },
+        {
           "type": "even",
+          "ranges": [
+            {
+              "start": 2,
+              "end": 33
+            }
+          ],
+          "gate": false
+        },
+        {
+          "type": "odd",
           "ranges": [
             {
               "start": 2,
               "end": 13
             }
-          ]
-        },
-        {
-          "type": "odd",
-          "ranges": [
-            {
-              "start": 14,
-              "end": 33
-            }
-          ]
-        },
-        {
-          "type": "odd",
-          "ranges": [
-            {
-              "start": 2,
-              "end": 33
-            }
-          ]
+          ],
+          "gate": false
         }
       ],
       "csn_enabled": false

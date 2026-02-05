@@ -1,0 +1,108 @@
+
+name: Build and Release (tagged)
+
+on:
+  push:
+    tags:
+      - 'v*'          # ex: v2026.01.14
+  workflow_dispatch:   # allow manual runs too
+
+permissions:
+  contents: write      # required to create releases
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install build deps
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+          pip install pyinstaller
+
+      # Build with PyInstaller. Update entry point if needed.
+      - name: Build EXE with PyInstaller
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Change this to your real entry script
+          $entry = "src\main.py"
+          if (-not (Test-Path $entry)) { $entry = "main.py" }  # fallback
+          pyinstaller --noconfirm --onefile --noconsole --name BinarySlicer $entry
+
+      # Rename the exe to match your release naming convention
+      - name: Rename EXE to include tag and platform
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $src = Join-Path "dist" "BinarySlicer.exe"
+          if (-not (Test-Path $src)) {
+            # some projects output <name>.exe under dist or dist\<name>\*
+            $maybe = Get-ChildItem -Path dist -Filter *.exe -Recurse | Select-Object -First 1
+            if ($maybe) { $src = $maybe.FullName } else { throw "No EXE produced in dist/" }
+          }
+          $dst = Join-Path "dist" ("BinarySlicer-$tag-windows-x64.exe")
+          Copy-Item $src $dst -Force
+          Write-Host "EXE => $dst"
+
+      # If you want to attach any extra files, put them under release_assets/
+      # and they will be uploaded together with the EXE.
+      - name: Prepare optional extra assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release_assets | Out-Null
+          Copy-Item -Force dist\BinarySlicer-*-windows-x64.exe release_assets\
+          if (Test-Path extras) { Copy-Item -Recurse -Force extras\* release_assets\ }
+
+      - name: Compute SHA256 for EXE
+        id: sha
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release_assets -Filter *-windows-x64.exe | Select-Object -First 1
+          if (-not $exe) { throw "No EXE found under release_assets/" }
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          "sha256:$($hash.ToLower())" | Out-File -Encoding ascii release_assets\SHA256.txt
+          # Generate release notes body
+          $body = @"
+What's in this release
+
+Windows 11 standalone EXE (no Python required)
+
+Uses %APPDATA%\BinarySlicer for config/theme
+
+Download
+
+$($exe.Name)
+
+SHA256
+$hash
+
+Note
+Unsigned EXE may trigger Windows SmartScreen (More info -> Run anyway)
+"@
+          $body | Out-File -Encoding utf8 release_assets\RELEASE_NOTES.md
+          echo "sha=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: BinarySlicer ${{ github.ref_name }}
+          body_path: release_assets/RELEASE_NOTES.md
+          files: |
+            release_assets/BinarySlicer-*-windows-x64.exe
+            release_assets/SHA256.txt
+            release_assets/*.zip
+            release_assets/*.json
+            release_assets/*.txt

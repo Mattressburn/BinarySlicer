@@ -51,6 +51,10 @@ class NormalizedFormat:
     field_views: Dict[str, str] = field(default_factory=dict)
     field_hidden: Dict[str, bool] = field(default_factory=dict)
     format_id: Optional[str] = None
+    # used_bits: number of bits actually used from the input (for formats embedded in larger payloads)
+    used_bits: Optional[int] = None
+    # used_bits_alignment: "msb" (default) or "lsb" - where the used bits are aligned in the input
+    used_bits_alignment: str = "msb"
 
 
 class FormatRepository:
@@ -236,6 +240,14 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
         if ranges:
             parity_cov.append({"type": typ, "ranges": ranges, "gate": bool(rule.get("gate", True))})
 
+    # Parse used_bits and alignment for formats embedded in larger payloads
+    used_bits = entry.get("used_bits")
+    if used_bits is not None:
+        used_bits = int(used_bits)
+    used_bits_alignment = str(entry.get("used_bits_alignment", "msb")).lower()
+    if used_bits_alignment not in ("msb", "lsb"):
+        used_bits_alignment = "msb"
+
     return NormalizedFormat(
         name=name,
         bit_length=bitlen,
@@ -245,6 +257,8 @@ def normalize_format_entry(entry: Dict) -> NormalizedFormat:
         field_views=views,
         field_hidden=hidden,
         format_id=str(fmt_id),
+        used_bits=used_bits,
+        used_bits_alignment=used_bits_alignment,
     )
 
 
@@ -358,6 +372,63 @@ def extract_bits(binary_string: str, start: int, end: int) -> str:
 
 def bits_to_int(bits: str) -> int:
     return int(bits, 2) if bits else 0
+
+
+# ---------------- Used bits extraction helpers ----------------
+
+
+def extract_used_region(
+    binary_string: str,
+    used_bits: int,
+    alignment: str = "msb",
+) -> str:
+    """Extract the used bits region from a binary string.
+
+    Args:
+        binary_string: The full binary input string
+        used_bits: Number of bits to extract
+        alignment: "msb" to take from left/MSB side, "lsb" to take from right/LSB side
+
+    Returns:
+        The extracted bit region as a string
+    """
+    if len(binary_string) <= used_bits:
+        return binary_string
+    if alignment == "lsb":
+        return binary_string[-used_bits:]
+    return binary_string[:used_bits]
+
+
+def slice_field_1based(bits: str, start_1based: int, length: int) -> int:
+    """Slice a field from bits using 1-based indexing.
+
+    Args:
+        bits: Binary string to slice from
+        start_1based: Start position (1-based, MSB is bit 1)
+        length: Number of bits to extract
+
+    Returns:
+        Integer value of the extracted field
+    """
+    start_0based = start_1based - 1
+    end_0based = start_0based + length
+    field_bits = bits[start_0based:end_0based]
+    return int(field_bits, 2) if field_bits else 0
+
+
+def prepare_bits_for_format(binary_string: str, fmt: "NormalizedFormat") -> str:
+    """Prepare input bits for a format by extracting the used region if specified.
+
+    Args:
+        binary_string: The full binary input
+        fmt: The format definition
+
+    Returns:
+        Binary string ready for field extraction (either full input or used region)
+    """
+    if fmt.used_bits is not None and len(binary_string) > fmt.used_bits:
+        return extract_used_region(binary_string, fmt.used_bits, fmt.used_bits_alignment)
+    return binary_string
 
 
 # ---------------- ANSI BCD 5-bit decoding (Excel-compatible) ----------------
@@ -751,9 +822,12 @@ __all__ = [
     "bits_to_int",
     "extract_bits",
     "extract_fields",
+    "extract_used_region",
     "merge_formats",
     "normalize_format_entry",
     "normalize_formats",
+    "prepare_bits_for_format",
+    "slice_field_1based",
     "validate_format_entry",
     "parity_even_bit_needed",
     "parity_odd_bit_needed",

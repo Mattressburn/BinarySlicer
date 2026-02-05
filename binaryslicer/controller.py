@@ -13,6 +13,7 @@ from .formats import (
     extract_fields,
     find_best_offsets,
     parity_score,
+    prepare_bits_for_format,
     verify_parity,
 )
 
@@ -276,12 +277,23 @@ class Controller:
     def _detect_formats(self, binary_string: str) -> Tuple[List[Tuple[str, NormalizedFormat]], List[Tuple[str, NormalizedFormat]]]:
         exact: List[Tuple[str, NormalizedFormat]] = []
         compatible: List[Tuple[str, NormalizedFormat]] = []
+        input_len = len(binary_string)
+
         for fmt_id, fmt in self.repo.formats_by_id.items():
             length = fmt.bit_length
-            if len(binary_string) == length:
+
+            # Check if format has used_bits specified (for embedded formats in larger payloads)
+            # If used_bits matches bit_length and input >= used_bits, treat as exact match
+            if fmt.used_bits is not None and fmt.used_bits == length:
+                if input_len >= fmt.used_bits:
+                    exact.append((fmt_id, fmt))
+                continue
+
+            if input_len == length:
                 exact.append((fmt_id, fmt))
-            elif len(binary_string) > length:
+            elif input_len > length:
                 compatible.append((fmt_id, fmt))
+
         return exact, compatible
 
     def _render_candidates(
@@ -307,7 +319,12 @@ class Controller:
             )
 
         for fmt_id, fmt in candidates:
-            use_bits, base_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, fmt.name)
+            # For formats with used_bits defined, extract the used region first
+            if fmt.used_bits is not None:
+                use_bits = prepare_bits_for_format(binary_string, fmt)
+                base_name = fmt.name + " (aligned)"
+            else:
+                use_bits, base_name = self._slice_bits(binary_string, fmt.bit_length, slice_mode, fmt.name)
             display_name = self._alias_format_name(base_name, fmt.format_id)
             summary_block, diag_entry, rows, csv_data, parity_rows = self._render_format(
                 use_bits,
@@ -355,9 +372,28 @@ class Controller:
         all_results: List[Dict] = []
 
         for fmt_id, fmt in candidates:
-            best = find_best_offsets(binary_string, fmt, step=1, top_n=3)
-            for candidate in best:
-                all_results.append({"name": fmt.name, "fmt": fmt, "candidate": candidate, "format_id": fmt_id})
+            # For formats with used_bits defined, use the aligned region directly (no offset search)
+            if fmt.used_bits is not None:
+                aligned_bits = prepare_bits_for_format(binary_string, fmt)
+                parity_results = verify_parity(aligned_bits, fmt)
+                stats = parity_score(parity_results)
+                all_results.append({
+                    "name": fmt.name,
+                    "fmt": fmt,
+                    "candidate": {
+                        "offset": 0,
+                        "bits": aligned_bits,
+                        "parity": parity_results,
+                        "stats": stats,
+                        "score_key": stats["score_tuple"] + (0,),
+                        "aligned": True,
+                    },
+                    "format_id": fmt_id,
+                })
+            else:
+                best = find_best_offsets(binary_string, fmt, step=1, top_n=3)
+                for candidate in best:
+                    all_results.append({"name": fmt.name, "fmt": fmt, "candidate": candidate, "format_id": fmt_id})
 
         if not all_results:
             return False, diagnostics, summaries, csv_rows, table_rows, parity_rows_map
@@ -369,10 +405,17 @@ class Controller:
             stats = cand["stats"]
             parity = cand["parity"]
             base_name = self._alias_format_name(entry["name"], entry["format_id"])
-            display_name = (
-                f"{base_name} (auto offset +{cand['offset']}, "
-                f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
-            )
+            # Show different label for aligned vs auto-offset formats
+            if cand.get("aligned"):
+                display_name = (
+                    f"{base_name} (MSB aligned, "
+                    f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
+                )
+            else:
+                display_name = (
+                    f"{base_name} (auto offset +{cand['offset']}, "
+                    f"pass {stats['total_pass']}/{len(parity)}, gated_fail={stats['gated_fail']})"
+                )
             summary_block, diag_entry, rows, csv_data, parity_rows = self._render_format(
                 cand["bits"],
                 display_name,

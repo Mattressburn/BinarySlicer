@@ -1,4 +1,4 @@
-"""Tkinter UI for BinarySlicer."""
+﻿"""Tkinter UI for BinarySlicer."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ from .theme import (
 BIT_RE = re.compile(r"^[01]+$")
 
 # Updated during build to reflect the date-based version (YYYY.MM.DD).
-APP_VERSION = "2026.01.14"
+APP_VERSION = "2026.02.05"
 
 
 class App:
@@ -47,7 +47,7 @@ class App:
 
     def __init__(self, root: tb.Window) -> None:
         self.root = root
-        self.root.title(f"BinarySlicer {APP_VERSION} – JCI Edition")
+        self.root.title(f"BinarySlicer {APP_VERSION} â€“ JCI Edition")
 
         ensure_user_config_dir()
 
@@ -74,7 +74,7 @@ class App:
         container.columnconfigure(2, weight=1)
         container.rowconfigure(3, weight=1)
 
-        self.header = ttk.Label(container, text=f"BinarySlicer · JCI Edition · {APP_VERSION}", style="Header.TLabel")
+        self.header = ttk.Label(container, text=f"BinarySlicer Â· JCI Edition Â· {APP_VERSION}", style="Header.TLabel")
         self.header.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 8))
 
         toolbar = ttk.Frame(container, padding=(12, 10), style="Panel.TFrame")
@@ -1088,7 +1088,7 @@ class App:
             idx = len(self.tree.get_children(""))
             tags = ("even",) if idx % 2 == 0 else ("odd",)
             tags += ("value_mono",)
-            self.tree.insert("", tk.END, values=(field, f"{start}–{end}", meta["int"], meta["hex"]), tags=tags)
+            self.tree.insert("", tk.END, values=(field, f"{start}â€“{end}", meta["int"], meta["hex"]), tags=tags)
             self.last_rows_for_csv.append(
                 {
                     "Format": name,
@@ -1111,7 +1111,7 @@ class App:
                 note = " (advisory)" if not result.get("gate", True) else ""
                 parity_loc = f"; parity_bit={result.get('parity_bit')}" if result.get("parity_bit") is not None else ""
                 summary_lines.append(
-                    f"  Parity {result['type']:4} {result['coverage'][0]}–{result['coverage'][1]}: {status}{note} "
+                    f"  Parity {result['type']:4} {result['coverage'][0]}â€“{result['coverage'][1]}: {status}{note} "
                     f"(expected {result['expected']}, actual {result['actual']}; data_len={result['data_len']}{parity_loc})\n"
                 )
             self.last_format_checks = parity
@@ -1163,7 +1163,7 @@ class App:
             if not show_all and result.get("ok") is not False:
                 continue
             coverage = result.get("coverage") or ("?", "?")
-            coverage_text = f"{coverage[0]}–{coverage[1]}"
+            coverage_text = f"{coverage[0]}â€“{coverage[1]}"
             status_text, status_tag = self._diagnostic_status(result)
             parity_bit = result.get("parity_bit")
             values = (
@@ -1280,6 +1280,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 
 
