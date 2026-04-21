@@ -512,12 +512,17 @@ class Controller:
                 continue
             start, end = info["range"]
             range_text = f"{start}–{end}"
-            summary_lines.append(f"  {field:14}: {info['int']} (hex {info['hex']}), bits[{info['len']}]={info['bits']}\n")
+            view = str(info.get("view") or "")
+            if view.startswith("ansi_bcd5") or view in ("ansi_bcd5", "ansi_bcd"):
+                display_value = str(info.get("display") or info["int"])
+            else:
+                display_value = str(info["int"])
+            summary_lines.append(f"  {field:14}: {display_value} (hex {info['hex']}), bits[{info['len']}]={info['bits']}\n")
             table_rows.append(
                 TableRow(
                     field=field,
                     range=range_text,
-                    value=str(info["int"]),
+                    value=display_value,
                     hex=info["hex"],
                     format_name=name,
                     bits=info["bits"],
@@ -527,7 +532,7 @@ class Controller:
                 {
                     "Format": name,
                     "Field": field,
-                    "Value": info["int"],
+                    "Value": display_value,
                     "Hex": info["hex"],
                     "BitLength": info["len"],
                     "Bits": info["bits"],

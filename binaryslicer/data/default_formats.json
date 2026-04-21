@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "format_pack_version": "2026.02.05",
+  "format_pack_version": "2026.04.21",
   "formats": [
     {
       "name": "H10301 - 26-bit",
@@ -316,23 +316,29 @@
       "bit_length": 48,
       "fields": [
         {
-          "name": "Parity L",
+          "name": "Parity 1",
           "start": 0,
           "end": 0,
           "role": "parity"
         },
         {
-          "name": "Company ID (Facility)",
+          "name": "Parity 2",
           "start": 1,
-          "end": 16
+          "end": 1,
+          "role": "parity"
+        },
+        {
+          "name": "Company ID (Facility)",
+          "start": 2,
+          "end": 23
         },
         {
           "name": "Card Number",
-          "start": 17,
+          "start": 24,
           "end": 46
         },
         {
-          "name": "Parity R",
+          "name": "Parity 3",
           "start": 47,
           "end": 47,
           "role": "parity"
@@ -341,18 +347,30 @@
       "parity": [
         {
           "type": "even",
+          "gate": false,
           "ranges": [
             {
-              "start": 1,
+              "start": 2,
               "end": 23
             }
           ]
         },
         {
           "type": "odd",
+          "gate": false,
           "ranges": [
             {
               "start": 24,
+              "end": 46
+            }
+          ]
+        },
+        {
+          "type": "odd",
+          "gate": false,
+          "ranges": [
+            {
+              "start": 2,
               "end": 46
             }
           ]
@@ -469,7 +487,7 @@
           "name": "SS (Start Sentinel)",
           "start": 0,
           "end": 4,
-          "view": "ansi_bcd5_lsb_coerce",
+          "view": "ansi_bcd5_lsb_coerce_label:SS",
           "hidden": true
         },
         {
@@ -482,7 +500,7 @@
           "name": "FS-1 (Field Separator)",
           "start": 25,
           "end": 29,
-          "view": "ansi_bcd5_lsb_coerce",
+          "view": "ansi_bcd5_lsb_coerce_label:FS",
           "hidden": true
         },
         {
@@ -495,7 +513,7 @@
           "name": "FS-2 (Field Separator)",
           "start": 50,
           "end": 54,
-          "view": "ansi_bcd5_lsb_coerce",
+          "view": "ansi_bcd5_lsb_coerce_label:FS",
           "hidden": true
         },
         {
@@ -508,7 +526,7 @@
           "name": "FS-3 (Field Separator)",
           "start": 85,
           "end": 89,
-          "view": "ansi_bcd5_lsb_coerce",
+          "view": "ansi_bcd5_lsb_coerce_label:FS",
           "hidden": true
         },
         {
@@ -521,7 +539,7 @@
           "name": "FS-4 (Field Separator)",
           "start": 95,
           "end": 99,
-          "view": "ansi_bcd5_lsb_coerce",
+          "view": "ansi_bcd5_lsb_coerce_label:FS",
           "hidden": true
         },
         {
@@ -534,7 +552,7 @@
           "name": "FS-5 (Field Separator)",
           "start": 105,
           "end": 109,
-          "view": "ansi_bcd5_lsb_coerce",
+          "view": "ansi_bcd5_lsb_coerce_label:FS",
           "hidden": true
         },
         {
@@ -565,13 +583,13 @@
           "name": "ES (End Sentinel)",
           "start": 190,
           "end": 194,
-          "view": "ansi_bcd5_lsb_coerce"
+          "view": "ansi_bcd5_lsb_coerce_label:ES"
         },
         {
           "name": "LRC",
           "start": 195,
           "end": 199,
-          "view": "ansi_bcd5_lsb_coerce"
+          "view": "ansi_bcd5_lsb_coerce_label:LRC"
         }
       ],
       "parity": [

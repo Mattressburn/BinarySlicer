@@ -479,6 +479,9 @@ def _ansi_bcd5_digit_from_chunk(
     return None
 
 
+_LABEL_VIEW_RE = __import__("re").compile(r"label:([A-Za-z0-9_\-]+)")
+
+
 def decode_ansi_bcd5_field(bits: str, view: str | None = None) -> Dict[str, object]:
     """Decode a field that is made up of 5-bit ANSI BCD characters."""
     out: Dict[str, object] = {
@@ -491,11 +494,15 @@ def decode_ansi_bcd5_field(bits: str, view: str | None = None) -> Dict[str, obje
     parity_position = "lsb" if view and "lsb" in view else "msb"
     allow_extended = bool(view and "hex" in view)
     coerce_invalid = bool(view and ("coerce" in view or "digit" in view))
+    label_override: Optional[str] = None
+    if view:
+        m = _LABEL_VIEW_RE.search(view)
+        if m:
+            label_override = m.group(1).upper()
 
     if not bits or len(bits) % 5 != 0:
-        # Not aligned, fall back to binary integer interpretation
         val = bits_to_int(bits)
-        out["display"] = str(val)
+        out["display"] = label_override if label_override is not None else str(val)
         out["int"] = val
         out["hex"] = f"0x{val:X}"
         out["ok_digits"] = False
@@ -516,11 +523,9 @@ def decode_ansi_bcd5_field(bits: str, view: str | None = None) -> Dict[str, obje
             digits.append(d)
             tokens.append(d)
         else:
-            # preserve known sentinel/separator labels if present
             tokens.append(_SENTINEL_MAP.get(ch, f"0b{ch}"))
 
     display = "".join(tokens)
-    out["display"] = display
 
     if all(t.isdigit() for t in tokens) and tokens:
         num = int("".join(tokens))
@@ -528,12 +533,12 @@ def decode_ansi_bcd5_field(bits: str, view: str | None = None) -> Dict[str, obje
         out["hex"] = f"0x{num:X}"
         out["ok_digits"] = True
     else:
-        # If mixed, keep a sensible numeric fallback as the raw binary int.
         val = bits_to_int(bits)
         out["int"] = val
         out["hex"] = f"0x{val:X}"
         out["ok_digits"] = False
 
+    out["display"] = label_override if label_override is not None else display
     return out
 
 
